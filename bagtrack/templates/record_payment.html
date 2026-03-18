@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Record Payment{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Record Payment</h1>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('record_payment') }}" enctype="multipart/form-data" id="paymentForm">
+        <div class="form-group">
+            <label class="form-label" for="worker_id">Select Worker *</label>
+            <select name="worker_id" id="worker_id" class="form-select" required onchange="updatePendingAmount()">
+                <option value="">-- Select Worker --</option>
+                {% for worker in workers %}
+                <option value="{{ worker.worker_id }}" data-pending="{{ worker.pending_amount }}">
+                    {{ worker.name }} - Pending: ₹{{ "%.2f"|format(worker.pending_amount) }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Pending Amount Display -->
+        <div id="pendingDisplay" style="display: none; background: rgba(255, 107, 53, 0.1); border: 2px solid var(--color-accent); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 0.875rem; color: var(--color-gray-light); margin-bottom: 0.25rem;">
+                WORKER'S PENDING AMOUNT
+            </div>
+            <div id="pendingAmount" style="font-family: var(--font-display); font-size: 2rem; color: var(--color-accent);">
+                ₹0.00
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="amount">Payment Amount (₹) *</label>
+            <input 
+                type="number" 
+                id="amount" 
+                name="amount" 
+                class="form-input" 
+                placeholder="Enter payment amount"
+                min="0.01"
+                step="0.01"
+                required
+            >
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="payment_method">Payment Method *</label>
+            <select name="payment_method" id="payment_method" class="form-select" required>
+                <option value="">-- Select Method --</option>
+                <option value="UPI">UPI</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+                <option value="CASH">Cash</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="transaction_reference">Transaction Reference (Optional)</label>
+            <input 
+                type="text" 
+                id="transaction_reference" 
+                name="transaction_reference" 
+                class="form-input" 
+                placeholder="e.g., UPI Ref No., Transaction ID"
+            >
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="screenshot">Payment Screenshot (Optional)</label>
+            <input 
+                type="file" 
+                id="screenshot" 
+                name="screenshot" 
+                class="form-file" 
+                accept="image/*"
+            >
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="notes">Notes (Optional)</label>
+            <textarea 
+                id="notes" 
+                name="notes" 
+                class="form-textarea" 
+                placeholder="Any additional notes about this payment..."
+                style="min-height: 80px;"
+            ></textarea>
+        </div>
+        
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success btn-block">
+                💰 Record Payment
+            </button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary btn-block">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+
+{% if not workers %}
+<div class="empty-state">
+    <div class="empty-icon">💰</div>
+    <div class="empty-message">No workers with pending payments</div>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary">Back to Dashboard</a>
+</div>
+{% endif %}
+
+<script>
+function updatePendingAmount() {
+    const select = document.getElementById('worker_id');
+    const selectedOption = select.options[select.selectedIndex];
+    const pendingAmount = selectedOption.getAttribute('data-pending');
+    
+    if (pendingAmount) {
+        document.getElementById('pendingDisplay').style.display = 'block';
+        document.getElementById('pendingAmount').textContent = '₹' + parseFloat(pendingAmount).toFixed(2);
+    } else {
+        document.getElementById('pendingDisplay').style.display = 'none';
+    }
+}
+
+document.getElementById('paymentForm').addEventListener('submit', function(e) {
+    const select = document.getElementById('worker_id');
+    const workerName = select.options[select.selectedIndex].text.split(' - ')[0];
+    const amount = parseFloat(document.getElementById('amount').value);
+    
+    if (amount <= 0) {
+        alert('Please enter a valid amount greater than 0');
+        e.preventDefault();
+        return false;
+    }
+    
+    return confirm(`Record payment of ₹${amount.toFixed(2)} to ${workerName}?`);
+});
+</script>
+{% endblock %}

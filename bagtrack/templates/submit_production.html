@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Submit Production{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Submit Production</h1>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('submit_production') }}" enctype="multipart/form-data" id="productionForm">
+        <div class="form-group">
+            <label class="form-label" for="photo">Production Photo *</label>
+            <input 
+                type="file" 
+                id="photo" 
+                name="photo" 
+                class="form-file" 
+                accept="image/*"
+                capture="environment"
+                required
+            >
+            <div style="font-size: 0.75rem; color: var(--color-gray); margin-top: 0.5rem;">
+                Upload a clear photo of the produced bags
+            </div>
+        </div>
+        
+        <!-- Image Preview -->
+        <div id="imagePreview" class="mb-3" style="display: none;">
+            <img id="previewImg" src="" alt="Preview" style="max-width: 100%; border-radius: var(--radius-sm); box-shadow: var(--shadow-md);">
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="bag_type">Bag Type (Optional)</label>
+            <input 
+                type="text" 
+                id="bag_type" 
+                name="bag_type" 
+                class="form-input" 
+                placeholder="e.g., Small, Medium, Large, Gift bag"
+            >
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="quantity">Quantity Produced *</label>
+            <input 
+                type="number" 
+                id="quantity" 
+                name="quantity" 
+                class="form-input" 
+                placeholder="Enter number of bags produced"
+                min="1"
+                required
+                oninput="calculateTotal()"
+            >
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="rate">Rate per Bag (₹) *</label>
+            <input 
+                type="number" 
+                id="rate" 
+                name="rate" 
+                class="form-input" 
+                placeholder="Enter rate per bag"
+                min="0.01"
+                step="0.01"
+                required
+                oninput="calculateTotal()"
+            >
+        </div>
+        
+        <!-- Total Amount Display -->
+        <div class="form-group">
+            <div style="background: rgba(255, 107, 53, 0.1); border: 2px solid var(--color-accent); border-radius: var(--radius-sm); padding: 1rem; text-align: center;">
+                <div style="font-size: 0.875rem; color: var(--color-gray-light); margin-bottom: 0.25rem;">
+                    TOTAL AMOUNT
+                </div>
+                <div id="totalAmount" style="font-family: var(--font-display); font-size: 2.5rem; color: var(--color-accent); letter-spacing: 1px;">
+                    ₹0.00
+                </div>
+            </div>
+        </div>
+        
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success btn-block">
+                ✓ Submit Production
+            </button>
+            <a href="{{ url_for('worker_dashboard') }}" class="btn btn-secondary btn-block">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Image preview
+document.getElementById('photo').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('previewImg').src = e.target.result;
+            document.getElementById('imagePreview').style.display = 'block';
+        }
+        reader.readAsDataURL(file);
+    }
+});
+
+// Calculate total amount
+function calculateTotal() {
+    const quantity = parseFloat(document.getElementById('quantity').value) || 0;
+    const rate = parseFloat(document.getElementById('rate').value) || 0;
+    const total = quantity * rate;
+    
+    document.getElementById('totalAmount').textContent = '₹' + total.toFixed(2);
+}
+
+// Form validation
+document.getElementById('productionForm').addEventListener('submit', function(e) {
+    const quantity = parseInt(document.getElementById('quantity').value);
+    const rate = parseFloat(document.getElementById('rate').value);
+    
+    if (quantity <= 0) {
+        alert('Please enter a valid quantity greater than 0');
+        e.preventDefault();
+        return false;
+    }
+    
+    if (rate <= 0) {
+        alert('Please enter a valid rate greater than 0');
+        e.preventDefault();
+        return false;
+    }
+    
+    return confirm('Submit production entry for ₹' + (quantity * rate).toFixed(2) + '?');
+});
+</script>
+{% endblock %}

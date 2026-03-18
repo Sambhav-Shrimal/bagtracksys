@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Production History{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Production History</h1>
+
+{% if productions %}
+<div class="table-container">
+    <div class="table-header">
+        <span>All Submissions</span>
+        <span class="badge" style="background: var(--color-accent);">{{ productions|length }}</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Photo</th>
+                    <th>Bag Type</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Reviewed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in productions %}
+                <tr>
+                    <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
+                    <td>
+                        <img src="{{ url_for('uploaded_file', filename=prod.photo_path) }}" 
+                             class="image-thumbnail" 
+                             alt="Production"
+                             onclick="window.open(this.src, '_blank')">
+                    </td>
+                    <td>{{ prod.bag_type or '-' }}</td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>₹{{ "%.2f"|format(prod.rate) }}</td>
+                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
+                    <td>
+                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
+                            {{ prod.status.replace('_', ' ') }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if prod.reviewed_at %}
+                            {{ prod.reviewed_at.strftime('%d %b') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if prod.status == 'REJECTED' and prod.rejection_reason %}
+                <tr style="background: rgba(239, 71, 111, 0.05);">
+                    <td colspan="8" style="padding: 0.75rem; border-left: 3px solid var(--color-danger);">
+                        <strong>Rejection Reason:</strong> {{ prod.rejection_reason }}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">📦</div>
+    <div class="empty-message">No production submissions yet</div>
+    <a href="{{ url_for('submit_production') }}" class="btn btn-primary">Submit Production</a>
+</div>
+{% endif %}
+{% endblock %}

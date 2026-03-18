@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: bagtrack
+    runtime : python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+```
+
+---
+
+### File 2: Update `requirements.txt`
+
+Open `requirements.txt` and replace with:
+```
+Flask==3.0.0
+Werkzeug==3.0.1
+python-dotenv==1.0.0
+Pillow
+gunicorn==21.2.0
+PyMySQL==1.1.0
+cryptography==41.0.7

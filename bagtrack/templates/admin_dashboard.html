@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Admin Dashboard</h1>
+
+<!-- Overall Statistics -->
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_workers }}</div>
+        <div class="stat-label">Total Workers</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(stats.total_production_value) }}</div>
+        <div class="stat-label">Total Production</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(stats.total_paid) }}</div>
+        <div class="stat-label">Total Paid</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(stats.total_pending) }}</div>
+        <div class="stat-label">Total Pending</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="action-cards">
+    <a href="{{ url_for('production_log') }}" class="action-card">
+        <span class="action-icon">📋</span>
+        <div class="action-title">Production Log</div>
+        <div class="action-desc">View all submissions</div>
+    </a>
+    
+    <a href="{{ url_for('record_payment') }}" class="action-card">
+        <span class="action-icon">💰</span>
+        <div class="action-title">Record Payment</div>
+        <div class="action-desc">Pay workers</div>
+    </a>
+    
+    <a href="{{ url_for('payment_log') }}" class="action-card">
+        <span class="action-icon">📜</span>
+        <div class="action-title">Payment Log</div>
+        <div class="action-desc">View payment history</div>
+    </a>
+</div>
+
+<!-- Pending Submissions Requiring Review -->
+{% if pending_submissions %}
+<div class="table-container">
+    <div class="table-header">
+        <span>⚠️ Pending Review</span>
+        <span class="badge badge-submitted">{{ pending_submissions|length }}</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Worker</th>
+                    <th>Photo</th>
+                    <th>Bag Type</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Total</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in pending_submissions %}
+                <tr>
+                    <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
+                    <td style="font-weight: 600;">{{ prod.worker_name }}</td>
+                    <td>
+                        <img src="{{ url_for('uploaded_file', filename=prod.photo_path) }}" 
+                             class="image-thumbnail" 
+                             alt="Production"
+                             onclick="window.open(this.src, '_blank')">
+                    </td>
+                    <td>{{ prod.bag_type or '-' }}</td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>₹{{ "%.2f"|format(prod.rate) }}</td>
+                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
+                    <td>
+                        <a href="{{ url_for('review_production', production_id=prod.production_id) }}" 
+                           class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.75rem;">
+                            Review
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Worker Summary Table -->
+<div class="table-container">
+    <div class="table-header">
+        <span>Worker Summary</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Worker Name</th>
+                    <th>Phone</th>
+                    <th>Total Approved</th>
+                    <th>Total Paid</th>
+                    <th>Total Pending</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for worker in workers %}
+                <tr>
+                    <td style="font-weight: 600;">{{ worker.name }}</td>
+                    <td>{{ worker.phone_number }}</td>
+                    <td class="text-success">₹{{ "%.2f"|format(worker.total_approved) }}</td>
+                    <td class="text-info">₹{{ "%.2f"|format(worker.total_paid) }}</td>
+                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(worker.total_pending) }}</td>
+                    <td>
+                        <a href="{{ url_for('worker_details', worker_id=worker.worker_id) }}" 
+                           class="btn btn-info" style="padding: 0.5rem 1rem; font-size: 0.75rem;">
+                            Details
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not workers %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted">No workers registered yet</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

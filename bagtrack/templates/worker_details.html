@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Worker Details - {{ worker.name }}{% endblock %}
+
+{% block content %}
+<h1 class="page-title">{{ worker.name }}</h1>
+
+<!-- Worker Info -->
+<div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
+    <table style="width: 100%;">
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+            <td style="padding: 0.75rem; font-weight: 600;">Phone Number:</td>
+            <td style="padding: 0.75rem;">{{ worker.phone_number }}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+            <td style="padding: 0.75rem; font-weight: 600;">Joined On:</td>
+            <td style="padding: 0.75rem;">{{ worker.created_at.strftime('%d %B %Y') }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 0.75rem; font-weight: 600;">Worker ID:</td>
+            <td style="padding: 0.75rem;">#{{ worker.worker_id }}</td>
+        </tr>
+    </table>
+</div>
+
+<!-- Production Summary -->
+<div class="stat-grid mb-4">
+    <div class="stat-card">
+        <div class="stat-value">{{ production_summary.total_submissions }}</div>
+        <div class="stat-label">Total Submissions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(production_summary.total_approved) }}</div>
+        <div class="stat-label">Total Approved</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(production_summary.total_paid) }}</div>
+        <div class="stat-label">Total Paid</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">₹{{ "%.0f"|format(production_summary.total_pending) }}</div>
+        <div class="stat-label">Total Pending</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ production_summary.pending_review }}</div>
+        <div class="stat-label">Pending Review</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ production_summary.rejected_count }}</div>
+        <div class="stat-label">Rejected</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="btn-group mb-4">
+    <a href="{{ url_for('record_payment') }}?worker_id={{ worker.worker_id }}" class="btn btn-success">
+        💰 Record Payment
+    </a>
+    <a href="{{ url_for('production_log') }}?worker_id={{ worker.worker_id }}" class="btn btn-primary">
+        📋 View All Production
+    </a>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+        ← Back to Dashboard
+    </a>
+</div>
+
+<!-- Recent Productions -->
+{% if productions %}
+<div class="table-container mb-4">
+    <div class="table-header">
+        <span>Recent Production</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Photo</th>
+                    <th>Bag Type</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in productions %}
+                <tr>
+                    <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
+                    <td>
+                        <img src="{{ url_for('uploaded_file', filename=prod.photo_path) }}" 
+                             class="image-thumbnail" 
+                             alt="Production"
+                             onclick="window.open(this.src, '_blank')">
+                    </td>
+                    <td>{{ prod.bag_type or '-' }}</td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>₹{{ "%.2f"|format(prod.rate) }}</td>
+                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
+                    <td>
+                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
+                            {{ prod.status.replace('_', ' ') }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Payment History -->
+{% if payments %}
+<div class="table-container">
+    <div class="table-header">
+        <span>Payment History</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                    <th>Status</th>
+                    <th>Confirmed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for payment in payments %}
+                <tr>
+                    <td>{{ payment.paid_at.strftime('%d %b %Y') }}</td>
+                    <td class="text-success" style="font-weight: 600;">₹{{ "%.2f"|format(payment.amount) }}</td>
+                    <td>{{ payment.payment_method.replace('_', ' ') }}</td>
+                    <td>{{ payment.transaction_reference or '-' }}</td>
+                    <td>
+                        <span class="badge badge-{{ payment.status.lower().replace('_', '-') }}">
+                            {{ payment.status.replace('_', ' ') }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if payment.confirmed_at %}
+                            {{ payment.confirmed_at.strftime('%d %b %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

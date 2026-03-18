@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Review Production{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Review Production</h1>
+
+<div class="form-container" style="max-width: 700px;">
+    <!-- Production Details -->
+    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem;">
+        <h2 style="font-family: var(--font-display); font-size: 1.5rem; letter-spacing: 1px; margin-bottom: 1rem; color: var(--color-accent);">
+            Production Details
+        </h2>
+        
+        <div class="mb-3">
+            <img src="{{ url_for('uploaded_file', filename=production.photo_path) }}" 
+                 alt="Production photo" 
+                 class="production-image"
+                 onclick="window.open(this.src, '_blank')"
+                 style="width: 100%; max-width: 500px; display: block; margin: 0 auto;">
+        </div>
+        
+        <table style="width: 100%; margin-top: 1rem;">
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <td style="padding: 0.75rem; font-weight: 600;">Worker:</td>
+                <td style="padding: 0.75rem; color: var(--color-accent);">{{ production.worker_name }}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <td style="padding: 0.75rem; font-weight: 600;">Bag Type:</td>
+                <td style="padding: 0.75rem;">{{ production.bag_type or 'Not specified' }}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <td style="padding: 0.75rem; font-weight: 600;">Quantity:</td>
+                <td style="padding: 0.75rem;">{{ production.quantity }} bags</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <td style="padding: 0.75rem; font-weight: 600;">Rate per Bag:</td>
+                <td style="padding: 0.75rem;">₹{{ "%.2f"|format(production.rate) }}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <td style="padding: 0.75rem; font-weight: 600;">Total Amount:</td>
+                <td style="padding: 0.75rem; font-family: var(--font-display); font-size: 1.5rem; color: var(--color-accent);">
+                    ₹{{ "%.2f"|format(production.total_amount) }}
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 0.75rem; font-weight: 600;">Submitted On:</td>
+                <td style="padding: 0.75rem;">{{ production.submitted_at.strftime('%d %B %Y at %I:%M %p') }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    {% if production.status == 'SUBMITTED' %}
+    <!-- Approval Form -->
+    <form method="POST" action="{{ url_for('review_production', production_id=production.production_id) }}" id="reviewForm">
+        <div class="form-group">
+            <label class="form-label">Decision</label>
+            <select name="action" id="action" class="form-select" required onchange="toggleRejectionReason()">
+                <option value="">-- Select Action --</option>
+                <option value="approve">✓ Approve Production</option>
+                <option value="reject">✗ Reject Production</option>
+            </select>
+        </div>
+        
+        <div class="form-group" id="rejectionReasonGroup" style="display: none;">
+            <label class="form-label" for="rejection_reason">Rejection Reason *</label>
+            <textarea 
+                id="rejection_reason" 
+                name="rejection_reason" 
+                class="form-textarea" 
+                placeholder="Explain why this production is being rejected..."
+            ></textarea>
+        </div>
+        
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success btn-block">
+                Submit Decision
+            </button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary btn-block">
+                Back to Dashboard
+            </a>
+        </div>
+    </form>
+    
+    <script>
+    function toggleRejectionReason() {
+        const action = document.getElementById('action').value;
+        const reasonGroup = document.getElementById('rejectionReasonGroup');
+        const reasonField = document.getElementById('rejection_reason');
+        
+        if (action === 'reject') {
+            reasonGroup.style.display = 'block';
+            reasonField.required = true;
+        } else {
+            reasonGroup.style.display = 'none';
+            reasonField.required = false;
+        }
+    }
+    
+    document.getElementById('reviewForm').addEventListener('submit', function(e) {
+        const action = document.getElementById('action').value;
+        const amount = '₹{{ "%.2f"|format(production.total_amount) }}';
+        const worker = '{{ production.worker_name }}';
+        
+        let message = '';
+        if (action === 'approve') {
+            message = `Approve production of ${amount} for ${worker}?`;
+        } else if (action === 'reject') {
+            const reason = document.getElementById('rejection_reason').value.trim();
+            if (!reason) {
+                alert('Please provide a rejection reason');
+                e.preventDefault();
+                return false;
+            }
+            message = `Reject this production? Worker will be notified.`;
+        }
+        
+        if (!confirm(message)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+    </script>
+    {% else %}
+    <div style="background: rgba(255, 107, 53, 0.1); border: 2px solid var(--color-accent); border-radius: var(--radius); padding: 1rem; text-align: center; margin-bottom: 1rem;">
+        <div style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem;">
+            Production Already Reviewed
+        </div>
+        <div>
+            <span class="badge badge-{{ production.status.lower().replace('_', '-') }}">
+                {{ production.status.replace('_', ' ') }}
+            </span>
+        </div>
+    </div>
+    
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary btn-block">
+        Back to Dashboard
+    </a>
+    {% endif %}
+</div>
+{% endblock %}

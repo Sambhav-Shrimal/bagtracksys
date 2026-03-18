@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>{% block title %}BagTrack{% endblock %} - Production Management</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if session.user_id %}
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="brand-icon">📦</span>
+                <span class="brand-text">BagTrack</span>
+            </div>
+            
+            <div class="nav-user">
+                <span class="user-name">{{ session.name }}</span>
+                <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+    
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-container">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">
+                            <span class="flash-icon">
+                                {% if category == 'success' %}✓{% elif category == 'danger' %}✗{% elif category == 'warning' %}⚠{% else %}ℹ{% endif %}
+                            </span>
+                            <span class="flash-message">{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </main>
+    
+    {% if session.user_id %}
+    <nav class="bottom-nav">
+        {% if session.is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}" class="nav-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="{{ url_for('production_log') }}" class="nav-item {% if request.endpoint == 'production_log' %}active{% endif %}">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">Production</span>
+            </a>
+            <a href="{{ url_for('record_payment') }}" class="nav-item {% if request.endpoint == 'record_payment' %}active{% endif %}">
+                <span class="nav-icon">💰</span>
+                <span class="nav-label">Pay</span>
+            </a>
+            <a href="{{ url_for('payment_log') }}" class="nav-item {% if request.endpoint == 'payment_log' %}active{% endif %}">
+                <span class="nav-icon">📜</span>
+                <span class="nav-label">Payments</span>
+            </a>
+        {% else %}
+            <a href="{{ url_for('worker_dashboard') }}" class="nav-item {% if request.endpoint == 'worker_dashboard' %}active{% endif %}">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Home</span>
+            </a>
+            <a href="{{ url_for('submit_production') }}" class="nav-item {% if request.endpoint == 'submit_production' %}active{% endif %}">
+                <span class="nav-icon">➕</span>
+                <span class="nav-label">Submit</span>
+            </a>
+            <a href="{{ url_for('production_history') }}" class="nav-item {% if request.endpoint == 'production_history' %}active{% endif %}">
+                <span class="nav-icon">📜</span>
+                <span class="nav-label">History</span>
+            </a>
+        {% endif %}
+    </nav>
+    {% endif %}
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

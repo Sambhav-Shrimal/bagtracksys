@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Production Log{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Production Log</h1>
+
+<!-- Filters -->
+<div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
+    <form method="GET" action="{{ url_for('production_log') }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="worker_id">Worker</label>
+                <select name="worker_id" id="worker_id" class="form-select">
+                    <option value="">All Workers</option>
+                    {% for worker in workers %}
+                    <option value="{{ worker.worker_id }}" {% if filters.worker_id == worker.worker_id %}selected{% endif %}>
+                        {{ worker.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="status">Status</label>
+                <select name="status" id="status" class="form-select">
+                    <option value="">All Status</option>
+                    <option value="SUBMITTED" {% if filters.status == 'SUBMITTED' %}selected{% endif %}>Submitted</option>
+                    <option value="APPROVED" {% if filters.status == 'APPROVED' %}selected{% endif %}>Approved</option>
+                    <option value="REJECTED" {% if filters.status == 'REJECTED' %}selected{% endif %}>Rejected</option>
+                    <option value="PAYMENT_SENT" {% if filters.status == 'PAYMENT_SENT' %}selected{% endif %}>Payment Sent</option>
+                    <option value="PAYMENT_RECEIVED" {% if filters.status == 'PAYMENT_RECEIVED' %}selected{% endif %}>Payment Received</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="date_from">From Date</label>
+                <input type="date" name="date_from" id="date_from" class="form-input" value="{{ filters.date_from or '' }}">
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="date_to">To Date</label>
+                <input type="date" name="date_to" id="date_to" class="form-input" value="{{ filters.date_to or '' }}">
+            </div>
+        </div>
+        
+        <div class="btn-group mt-2">
+            <button type="submit" class="btn btn-primary">Apply Filters</button>
+            <a href="{{ url_for('production_log') }}" class="btn btn-secondary">Clear Filters</a>
+        </div>
+    </form>
+</div>
+
+<!-- Production Table -->
+{% if productions %}
+<div class="table-container">
+    <div class="table-header">
+        <span>Production Entries</span>
+        <span class="badge" style="background: var(--color-accent);">{{ productions|length }}</span>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Worker</th>
+                    <th>Photo</th>
+                    <th>Bag Type</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Reviewed By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in productions %}
+                <tr>
+                    <td>#{{ prod.production_id }}</td>
+                    <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
+                    <td style="font-weight: 600;">{{ prod.worker_name }}</td>
+                    <td>
+                        <img src="{{ url_for('uploaded_file', filename=prod.photo_path) }}" 
+                             class="image-thumbnail" 
+                             alt="Production"
+                             onclick="window.open(this.src, '_blank')">
+                    </td>
+                    <td>{{ prod.bag_type or '-' }}</td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>₹{{ "%.2f"|format(prod.rate) }}</td>
+                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
+                    <td>
+                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
+                            {{ prod.status.replace('_', ' ') }}
+                        </span>
+                    </td>
+                    <td>{{ prod.reviewed_by_name or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <div class="empty-message">No production entries found</div>
+    {% if filters.worker_id or filters.status or filters.date_from or filters.date_to %}
+    <p style="color: var(--color-gray); margin-top: 0.5rem;">Try adjusting your filters</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
