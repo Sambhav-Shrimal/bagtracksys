@@ -48,7 +48,11 @@ def datetimeformat(value, format='%d %b %Y'):
 
 # SQLite connection function with datetime parsing
 def get_db():
-    db = sqlite3.connect(app.config['DATABASE'])
+    db = sqlite3.connect(app.config['DATABASE'], timeout=20.0, check_same_thread=False)
+    
+    # Enable WAL mode for better concurrency
+    db.execute('PRAGMA journal_mode=WAL')
+    db.execute('PRAGMA busy_timeout=5000')
     
     # Custom row factory that converts datetime strings to datetime objects
     def dict_factory(cursor, row):
@@ -1002,10 +1006,6 @@ def server_error(e):
 
 # ============================================================================
 # MAIN ENTRY POINT
-# ============================================================================
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
 # ============================================================================
 
 if __name__ == '__main__':
