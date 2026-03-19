@@ -28,10 +28,45 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
-# SQLite connection function
+
+# Jinja2 filter for datetime formatting (SQLite compatibility)
+@app.template_filter('datetimeformat')
+def datetimeformat(value, format='%d %b %Y'):
+    """Format a datetime string or object"""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            # Parse SQLite datetime string
+            dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+            return dt.strftime(format)
+        except:
+            return value
+    else:
+        # Already a datetime object
+        return value.strftime(format)
+
+# SQLite connection function with datetime parsing
 def get_db():
     db = sqlite3.connect(app.config['DATABASE'])
-    db.row_factory = sqlite3.Row
+    
+    # Custom row factory that converts datetime strings to datetime objects
+    def dict_factory(cursor, row):
+        d = {}
+        for idx, col in enumerate(cursor.description):
+            value = row[idx]
+            # Try to parse datetime strings
+            if value and isinstance(value, str):
+                # Check if it looks like a datetime
+                if len(value) >= 19 and value[4] == '-' and value[7] == '-':
+                    try:
+                        value = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                    except:
+                        pass
+            d[col[0]] = value
+        return d
+    
+    db.row_factory = dict_factory
     return db
 
 # Create upload folders
@@ -967,6 +1002,10 @@ def server_error(e):
 
 # ============================================================================
 # MAIN ENTRY POINT
+# ============================================================================
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
 # ============================================================================
 
 if __name__ == '__main__':
