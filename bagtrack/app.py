@@ -138,7 +138,13 @@ def init_db():
 
 
 # Initialize database on startup
-init_db()
+try:
+    init_db()
+    print("✅ Database initialized successfully!")
+except Exception as e:
+    print(f"❌ Database initialization error: {e}")
+    import traceback
+    traceback.print_exc()
 
 
 def allowed_file(filename):
@@ -909,6 +915,42 @@ def api_worker_pending(worker_id):
     return jsonify({'pending_amount': float(result['pending_amount'])})
 
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint to verify database"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Check all tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        # Count records
+        counts = {}
+        for table in ['workers', 'production', 'payments', 'payment_production_links', 'activity_log']:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                counts[table] = cursor.fetchone()[0]
+            except:
+                counts[table] = "ERROR"
+        
+        cursor.close()
+        db.close()
+        
+        return jsonify({
+            'status': 'ok',
+            'database': app.config['DATABASE'],
+            'tables': tables,
+            'counts': counts
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
@@ -925,10 +967,6 @@ def server_error(e):
 
 # ============================================================================
 # MAIN ENTRY POINT
-# ============================================================================
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
 # ============================================================================
 
 if __name__ == '__main__':
