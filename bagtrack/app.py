@@ -46,40 +46,99 @@ def init_db():
     db = get_db()
     cursor = db.cursor()
     
-    # Import schema from schema.sql if it exists
-    try:
-        with open('schema.sql', 'r') as f:
-            schema_sql = f.read()
-            # Convert MySQL schema to SQLite
-            schema_sql = schema_sql.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-            schema_sql = schema_sql.replace('ENGINE=InnoDB', '')
-            schema_sql = schema_sql.replace('CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', '')
-            schema_sql = schema_sql.replace('ENUM(', 'TEXT CHECK( ')
-            schema_sql = schema_sql.replace('BOOLEAN', 'INTEGER')
-            schema_sql = schema_sql.replace('DECIMAL(10, 2)', 'REAL')
-            
-            # Execute schema (split by semicolons for multiple statements)
-            for statement in schema_sql.split(';'):
-                if statement.strip():
-                    try:
-                        cursor.execute(statement)
-                    except Exception as e:
-                        print(f"Schema execution note: {e}")
-            
-            db.commit()
-    except FileNotFoundError:
-        # Create basic schema if file doesn't exist
-        print("schema.sql not found, creating basic schema...")
+    # Create tables
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS workers (
+            worker_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone_number TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_admin INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS production (
+            production_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL,
+            photo_path TEXT NOT NULL,
+            bag_type TEXT,
+            quantity INTEGER NOT NULL,
+            rate REAL NOT NULL,
+            total_amount REAL NOT NULL,
+            status TEXT DEFAULT 'SUBMITTED',
+            rejection_reason TEXT,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TIMESTAMP,
+            reviewed_by INTEGER,
+            FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
+            FOREIGN KEY (reviewed_by) REFERENCES workers(worker_id) ON DELETE SET NULL
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS payments (
+            payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            payment_method TEXT NOT NULL,
+            transaction_reference TEXT,
+            payment_screenshot TEXT,
+            status TEXT DEFAULT 'PAYMENT_SENT',
+            paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at TIMESTAMP,
+            paid_by INTEGER NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
+            FOREIGN KEY (paid_by) REFERENCES workers(worker_id) ON DELETE CASCADE
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS payment_production_links (
+            link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_id INTEGER NOT NULL,
+            production_id INTEGER NOT NULL,
+            amount_allocated REAL NOT NULL,
+            FOREIGN KEY (payment_id) REFERENCES payments(payment_id) ON DELETE CASCADE,
+            FOREIGN KEY (production_id) REFERENCES production(production_id) ON DELETE CASCADE
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activity_log (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES workers(worker_id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Check if admin user exists
+    cursor.execute("SELECT COUNT(*) as count FROM workers WHERE is_admin = 1")
+    result = cursor.fetchone()
+    if result[0] == 0:
+        # Create default admin user
+        password_hash = generate_password_hash('9vvb70cz5h')
+        cursor.execute("""
+            INSERT INTO workers (name, phone_number, password_hash, is_admin)
+            VALUES (?, ?, ?, 1)
+        """, ('Admin', '9986109356', password_hash))
+    
+    db.commit()
     cursor.close()
     db.close()
 
 
-# Initialize database on first run
-try:
-    init_db()
-except:
-    pass  # Database might already exist
+# Initialize database on startup
+init_db()
 
 
 def allowed_file(filename):
@@ -870,7 +929,6 @@ def server_error(e):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-# MAIN ENTRY POINT
 # ============================================================================
 
 if __name__ == '__main__':
