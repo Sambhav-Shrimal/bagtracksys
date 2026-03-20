@@ -3,3 +3,5 @@ Werkzeug==3.0.1
 python-dotenv==1.0.0
 Pillow
 gunicorn==21.2.0
+PyMySQL==1.1.0
+cryptography==41.0.7
