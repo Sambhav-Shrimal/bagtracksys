@@ -1,11 +1,11 @@
 """
 BagTrack - Production Management System
 A piece-rate tracking system for paper bag manufacturing workers
-SQLite version for Render.com deployment
+Updated for PyMySQL (works on Render.com)
 """
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
-import sqlite3
+import pymysql
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
@@ -20,170 +20,28 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-# SQLite database file
-
-
-app.config['DATABASE'] = os.environ.get('DATABASE', 'bagtrack.db')
+app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'localhost')
+app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'bagtrack_user')
+app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'BagTrack2024')
+app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'bagtrack_db')
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
-
-# Jinja2 filter for datetime formatting (SQLite compatibility)
-@app.template_filter('datetimeformat')
-def datetimeformat(value, format='%d %b %Y'):
-    """Format a datetime string or object"""
-    if value is None:
-        return ''
-    if isinstance(value, str):
-        try:
-            # Parse SQLite datetime string
-            dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-            return dt.strftime(format)
-        except:
-            return value
-    else:
-        # Already a datetime object
-        return value.strftime(format)
-
-# SQLite connection function with datetime parsing
+# MySQL connection function
 def get_db():
-    db = sqlite3.connect(app.config['DATABASE'], timeout=20.0, check_same_thread=False)
-    
-    # Enable WAL mode for better concurrency
-    db.execute('PRAGMA journal_mode=WAL')
-    db.execute('PRAGMA busy_timeout=5000')
-    
-    # Custom row factory that converts datetime strings to datetime objects
-    def dict_factory(cursor, row):
-        d = {}
-        for idx, col in enumerate(cursor.description):
-            value = row[idx]
-            # Try to parse datetime strings
-            if value and isinstance(value, str):
-                # Check if it looks like a datetime
-                if len(value) >= 19 and value[4] == '-' and value[7] == '-':
-                    try:
-                        value = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-                    except:
-                        pass
-            d[col[0]] = value
-        return d
-    
-    db.row_factory = dict_factory
-    return db
+    return pymysql.connect(
+        host=app.config['MYSQL_HOST'],
+        user=app.config['MYSQL_USER'],
+        password=app.config['MYSQL_PASSWORD'],
+        database=app.config['MYSQL_DB'],
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 # Create upload folders
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'production'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'payments'), exist_ok=True)
-
-
-# Initialize SQLite database
-def init_db():
-    """Initialize the database with schema"""
-    db = get_db()
-    cursor = db.cursor()
-    
-    # Create tables
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS workers (
-            worker_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone_number TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            is_admin INTEGER DEFAULT 0,
-            is_active INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS production (
-            production_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            worker_id INTEGER NOT NULL,
-            photo_path TEXT NOT NULL,
-            bag_type TEXT,
-            quantity INTEGER NOT NULL,
-            rate REAL NOT NULL,
-            total_amount REAL NOT NULL,
-            status TEXT DEFAULT 'SUBMITTED',
-            rejection_reason TEXT,
-            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            reviewed_at TIMESTAMP,
-            reviewed_by INTEGER,
-            FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
-            FOREIGN KEY (reviewed_by) REFERENCES workers(worker_id) ON DELETE SET NULL
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS payments (
-            payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            worker_id INTEGER NOT NULL,
-            amount REAL NOT NULL,
-            payment_method TEXT NOT NULL,
-            transaction_reference TEXT,
-            payment_screenshot TEXT,
-            status TEXT DEFAULT 'PAYMENT_SENT',
-            paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            confirmed_at TIMESTAMP,
-            paid_by INTEGER NOT NULL,
-            notes TEXT,
-            FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
-            FOREIGN KEY (paid_by) REFERENCES workers(worker_id) ON DELETE CASCADE
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS payment_production_links (
-            link_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            payment_id INTEGER NOT NULL,
-            production_id INTEGER NOT NULL,
-            amount_allocated REAL NOT NULL,
-            FOREIGN KEY (payment_id) REFERENCES payments(payment_id) ON DELETE CASCADE,
-            FOREIGN KEY (production_id) REFERENCES production(production_id) ON DELETE CASCADE
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS activity_log (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            action TEXT NOT NULL,
-            entity_type TEXT NOT NULL,
-            entity_id INTEGER NOT NULL,
-            details TEXT,
-            ip_address TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES workers(worker_id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # Check if admin user exists
-    cursor.execute("SELECT COUNT(*) as count FROM workers WHERE is_admin = 1")
-    result = cursor.fetchone()
-    if result[0] == 0:
-        # Create default admin user
-        password_hash = generate_password_hash('9vvb70cz5h')
-        cursor.execute("""
-            INSERT INTO workers (name, phone_number, password_hash, is_admin)
-            VALUES (?, ?, ?, 1)
-        """, ('Admin', '9986109356', password_hash))
-    
-    db.commit()
-    cursor.close()
-    db.close()
-
-
-# Initialize database on startup
-try:
-    init_db()
-    print("✅ Database initialized successfully!")
-except Exception as e:
-    print(f"❌ Database initialization error: {e}")
-    import traceback
-    traceback.print_exc()
 
 
 def allowed_file(filename):
@@ -226,7 +84,7 @@ def log_activity(action, entity_type, entity_id, details=None):
         
         cursor.execute("""
             INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (user_id, action, entity_type, entity_id, details, ip_address))
         
         db.commit()
@@ -266,7 +124,7 @@ def login():
         cursor.execute("""
             SELECT worker_id, name, password_hash, is_admin, is_active 
             FROM workers 
-            WHERE phone_number = ?
+            WHERE phone_number = %s
         """, (phone_number,))
         
         user = cursor.fetchone()
@@ -318,7 +176,7 @@ def register():
         cursor = db.cursor()
         
         # Check if phone number already exists
-        cursor.execute("SELECT worker_id FROM workers WHERE phone_number = ?", (phone_number,))
+        cursor.execute("SELECT worker_id FROM workers WHERE phone_number = %s", (phone_number,))
         if cursor.fetchone():
             flash('Phone number already registered.', 'danger')
             cursor.close()
@@ -329,7 +187,7 @@ def register():
         password_hash = generate_password_hash(password)
         cursor.execute("""
             INSERT INTO workers (name, phone_number, password_hash, is_admin)
-            VALUES (?, ?, ?, 0)
+            VALUES (%s, %s, %s, FALSE)
         """, (name, phone_number, password_hash))
         
         db.commit()
@@ -343,40 +201,6 @@ def register():
         return redirect(url_for('login'))
     
     return render_template('register.html')
-
-
-@app.route('/secret-admin-reset-bagtrack-2026')
-def secret_admin_reset():
-    """Secret route to reset admin credentials"""
-    try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        # Delete existing admin
-        cursor.execute("DELETE FROM workers WHERE phone_number = '9986109356'")
-        
-        # Create new admin
-        password_hash = generate_password_hash('9vvb70cz5h')
-        cursor.execute("""
-            INSERT INTO workers (name, phone_number, password_hash, is_admin, is_active)
-            VALUES (?, ?, ?, 1, 1)
-        """, ('Admin', '9986109356', password_hash))
-        
-        db.commit()
-        cursor.close()
-        db.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Admin user reset successfully',
-            'phone': '9986109356',
-            'password': '9vvb70cz5h'
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
 
 
 # ============================================================================
@@ -401,7 +225,7 @@ def worker_dashboard():
             COALESCE(SUM(CASE WHEN status = 'PAYMENT_RECEIVED' THEN total_amount ELSE 0 END), 0) as total_paid,
             COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYMENT_SENT') THEN total_amount ELSE 0 END), 0) as total_pending
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
     """, (worker_id,))
     
     summary = cursor.fetchone()
@@ -410,7 +234,7 @@ def worker_dashboard():
     cursor.execute("""
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount, status, submitted_at
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
         ORDER BY submitted_at DESC
         LIMIT 10
     """, (worker_id,))
@@ -421,7 +245,7 @@ def worker_dashboard():
     cursor.execute("""
         SELECT payment_id, amount, payment_method, transaction_reference, paid_at
         FROM payments
-        WHERE worker_id = ? AND status = 'PAYMENT_SENT'
+        WHERE worker_id = %s AND status = 'PAYMENT_SENT'
         ORDER BY paid_at DESC
     """, (worker_id,))
     
@@ -480,7 +304,7 @@ def submit_production():
         cursor = db.cursor()
         cursor.execute("""
             INSERT INTO production (worker_id, photo_path, bag_type, quantity, rate, total_amount, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'SUBMITTED')
+            VALUES (%s, %s, %s, %s, %s, %s, 'SUBMITTED')
         """, (worker_id, photo_path, bag_type or None, quantity, rate, total_amount))
         
         db.commit()
@@ -512,7 +336,7 @@ def production_history():
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount, 
                status, rejection_reason, submitted_at, reviewed_at
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
         ORDER BY submitted_at DESC
     """, (worker_id,))
     
@@ -538,7 +362,7 @@ def confirm_payment(payment_id):
     # Verify payment belongs to this worker and is in PAYMENT_SENT status
     cursor.execute("""
         SELECT payment_id FROM payments
-        WHERE payment_id = ? AND worker_id = ? AND status = 'PAYMENT_SENT'
+        WHERE payment_id = %s AND worker_id = %s AND status = 'PAYMENT_SENT'
     """, (payment_id, worker_id))
     
     payment = cursor.fetchone()
@@ -552,17 +376,16 @@ def confirm_payment(payment_id):
     # Update payment status
     cursor.execute("""
         UPDATE payments
-        SET status = 'PAYMENT_RECEIVED', confirmed_at = CURRENT_TIMESTAMP
-        WHERE payment_id = ?
+        SET status = 'PAYMENT_RECEIVED', confirmed_at = NOW()
+        WHERE payment_id = %s
     """, (payment_id,))
     
-    # Update related production entries (SQLite compatible)
+    # Update related production entries
     cursor.execute("""
-        UPDATE production 
-        SET status = 'PAYMENT_RECEIVED'
-        WHERE production_id IN (
-            SELECT production_id FROM payment_production_links WHERE payment_id = ?
-        ) AND status = 'PAYMENT_SENT'
+        UPDATE production p
+        INNER JOIN payment_production_links ppl ON p.production_id = ppl.production_id
+        SET p.status = 'PAYMENT_RECEIVED'
+        WHERE ppl.payment_id = %s AND p.status = 'PAYMENT_SENT'
     """, (payment_id,))
     
     db.commit()
@@ -596,7 +419,7 @@ def admin_dashboard():
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
         LEFT JOIN payments pay ON w.worker_id = pay.worker_id
-        WHERE w.is_admin = 0
+        WHERE w.is_admin = FALSE
     """)
     
     stats = cursor.fetchone()
@@ -613,7 +436,7 @@ def admin_dashboard():
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
         LEFT JOIN payments pay ON w.worker_id = pay.worker_id
-        WHERE w.is_admin = 0 AND w.is_active = 1
+        WHERE w.is_admin = FALSE AND w.is_active = TRUE
         GROUP BY w.worker_id, w.name, w.phone_number
         ORDER BY w.name
     """)
@@ -667,19 +490,19 @@ def production_log():
     params = []
     
     if worker_id:
-        query += " AND p.worker_id = ?"
+        query += " AND p.worker_id = %s"
         params.append(worker_id)
     
     if status:
-        query += " AND p.status = ?"
+        query += " AND p.status = %s"
         params.append(status)
     
     if date_from:
-        query += " AND DATE(p.submitted_at) >= ?"
+        query += " AND DATE(p.submitted_at) >= %s"
         params.append(date_from)
     
     if date_to:
-        query += " AND DATE(p.submitted_at) <= ?"
+        query += " AND DATE(p.submitted_at) <= %s"
         params.append(date_to)
     
     query += " ORDER BY p.submitted_at DESC"
@@ -688,7 +511,7 @@ def production_log():
     productions = cursor.fetchall()
     
     # Get all workers for filter dropdown
-    cursor.execute("SELECT worker_id, name FROM workers WHERE is_admin = 0 ORDER BY name")
+    cursor.execute("SELECT worker_id, name FROM workers WHERE is_admin = FALSE ORDER BY name")
     workers = cursor.fetchall()
     
     cursor.close()
@@ -715,8 +538,8 @@ def review_production(production_id):
         if action == 'approve':
             cursor.execute("""
                 UPDATE production
-                SET status = 'APPROVED', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
-                WHERE production_id = ? AND status = 'SUBMITTED'
+                SET status = 'APPROVED', reviewed_at = NOW(), reviewed_by = %s
+                WHERE production_id = %s AND status = 'SUBMITTED'
             """, (session['user_id'], production_id))
             
             db.commit()
@@ -732,8 +555,8 @@ def review_production(production_id):
             
             cursor.execute("""
                 UPDATE production
-                SET status = 'REJECTED', rejection_reason = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
-                WHERE production_id = ? AND status = 'SUBMITTED'
+                SET status = 'REJECTED', rejection_reason = %s, reviewed_at = NOW(), reviewed_by = %s
+                WHERE production_id = %s AND status = 'SUBMITTED'
             """, (rejection_reason, session['user_id'], production_id))
             
             db.commit()
@@ -749,7 +572,7 @@ def review_production(production_id):
         SELECT p.*, w.name as worker_name
         FROM production p
         INNER JOIN workers w ON p.worker_id = w.worker_id
-        WHERE p.production_id = ?
+        WHERE p.production_id = %s
     """, (production_id,))
     
     production = cursor.fetchone()
@@ -799,7 +622,7 @@ def record_payment():
         cursor.execute("""
             INSERT INTO payments (worker_id, amount, payment_method, transaction_reference, 
                                  payment_screenshot, paid_by, notes, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'PAYMENT_SENT')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PAYMENT_SENT')
         """, (worker_id, amount, payment_method, transaction_reference or None, 
               screenshot_path, session['user_id'], notes or None))
         
@@ -809,7 +632,7 @@ def record_payment():
         cursor.execute("""
             SELECT production_id, total_amount
             FROM production
-            WHERE worker_id = ? AND status = 'APPROVED'
+            WHERE worker_id = %s AND status = 'APPROVED'
             ORDER BY submitted_at ASC
         """, (worker_id,))
         
@@ -824,14 +647,14 @@ def record_payment():
             
             cursor.execute("""
                 INSERT INTO payment_production_links (payment_id, production_id, amount_allocated)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
             """, (payment_id, prod['production_id'], allocated))
             
             # Update production status to PAYMENT_SENT
             cursor.execute("""
                 UPDATE production
                 SET status = 'PAYMENT_SENT'
-                WHERE production_id = ?
+                WHERE production_id = %s
             """, (prod['production_id'],))
             
             remaining_amount -= allocated
@@ -852,7 +675,7 @@ def record_payment():
                COALESCE(SUM(CASE WHEN p.status = 'APPROVED' THEN p.total_amount ELSE 0 END), 0) as pending_amount
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
-        WHERE w.is_admin = 0 AND w.is_active = 1
+        WHERE w.is_admin = FALSE AND w.is_active = TRUE
         GROUP BY w.worker_id, w.name
         HAVING pending_amount > 0
         ORDER BY w.name
@@ -900,7 +723,7 @@ def worker_details(worker_id):
     cursor.execute("""
         SELECT worker_id, name, phone_number, created_at
         FROM workers
-        WHERE worker_id = ? AND is_admin = 0
+        WHERE worker_id = %s AND is_admin = FALSE
     """, (worker_id,))
     
     worker = cursor.fetchone()
@@ -921,7 +744,7 @@ def worker_details(worker_id):
             COALESCE(SUM(CASE WHEN status = 'SUBMITTED' THEN 1 ELSE 0 END), 0) as pending_review,
             COALESCE(SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END), 0) as rejected_count
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
     """, (worker_id,))
     
     production_summary = cursor.fetchone()
@@ -930,7 +753,7 @@ def worker_details(worker_id):
     cursor.execute("""
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount, status, submitted_at
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
         ORDER BY submitted_at DESC
         LIMIT 20
     """, (worker_id,))
@@ -941,7 +764,7 @@ def worker_details(worker_id):
     cursor.execute("""
         SELECT payment_id, amount, payment_method, transaction_reference, status, paid_at, confirmed_at
         FROM payments
-        WHERE worker_id = ?
+        WHERE worker_id = %s
         ORDER BY paid_at DESC
     """, (worker_id,))
     
@@ -978,7 +801,7 @@ def api_worker_pending(worker_id):
     cursor.execute("""
         SELECT COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN total_amount ELSE 0 END), 0) as pending_amount
         FROM production
-        WHERE worker_id = ?
+        WHERE worker_id = %s
     """, (worker_id,))
     
     result = cursor.fetchone()
@@ -986,42 +809,6 @@ def api_worker_pending(worker_id):
     db.close()
     
     return jsonify({'pending_amount': float(result['pending_amount'])})
-
-
-@app.route('/health')
-def health_check():
-    """Health check endpoint to verify database"""
-    try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        # Check all tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        # Count records
-        counts = {}
-        for table in ['workers', 'production', 'payments', 'payment_production_links', 'activity_log']:
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                counts[table] = cursor.fetchone()[0]
-            except:
-                counts[table] = "ERROR"
-        
-        cursor.close()
-        db.close()
-        
-        return jsonify({
-            'status': 'ok',
-            'database': app.config['DATABASE'],
-            'tables': tables,
-            'counts': counts
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
 
 
 # ============================================================================
