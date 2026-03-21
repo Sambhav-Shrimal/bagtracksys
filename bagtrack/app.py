@@ -20,10 +20,11 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'localhost')
-app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'bagtrack_user')
-app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'BagTrack2024')
-app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'bagtrack_db')
+app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'mysql-10f8fdf6-sambhavshrimal25-7191.i.aivencloud.com')
+app.config['MYSQL_PORT'] = int(os.environ.get('MYSQL_PORT', '19119'))
+app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'avnadmin')
+app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'AVNS_HJFLUdvizYrTYo4P3zk')
+app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'defaultdb')
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -32,10 +33,12 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 def get_db():
     return pymysql.connect(
         host=app.config['MYSQL_HOST'],
+        port=app.config['MYSQL_PORT'],
         user=app.config['MYSQL_USER'],
         password=app.config['MYSQL_PASSWORD'],
         database=app.config['MYSQL_DB'],
-        cursorclass=pymysql.cursors.DictCursor
+        cursorclass=pymysql.cursors.DictCursor,
+        ssl={'ssl_disabled': False}
     )
 
 # Create upload folders
