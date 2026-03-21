@@ -814,6 +814,125 @@ def api_worker_pending(worker_id):
     return jsonify({'pending_amount': float(result['pending_amount'])})
 
 
+@app.route('/setup-database-bagtrack-init-2026')
+def setup_database():
+    """One-time database setup - creates all tables and admin user"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Create workers table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS workers (
+                worker_id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                phone_number VARCHAR(15) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                is_admin BOOLEAN DEFAULT FALSE,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create production table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS production (
+                production_id INT AUTO_INCREMENT PRIMARY KEY,
+                worker_id INT NOT NULL,
+                photo_path VARCHAR(255) NOT NULL,
+                bag_type VARCHAR(100),
+                quantity INT NOT NULL,
+                rate DECIMAL(10, 2) NOT NULL,
+                total_amount DECIMAL(10, 2) NOT NULL,
+                status VARCHAR(50) DEFAULT 'SUBMITTED',
+                rejection_reason TEXT,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP NULL,
+                reviewed_by INT,
+                FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
+                FOREIGN KEY (reviewed_by) REFERENCES workers(worker_id) ON DELETE SET NULL
+            )
+        """)
+        
+        # Create payments table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                payment_id INT AUTO_INCREMENT PRIMARY KEY,
+                worker_id INT NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                payment_method VARCHAR(50) NOT NULL,
+                transaction_reference VARCHAR(100),
+                payment_screenshot VARCHAR(255),
+                status VARCHAR(50) DEFAULT 'PAYMENT_SENT',
+                paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TIMESTAMP NULL,
+                paid_by INT NOT NULL,
+                notes TEXT,
+                FOREIGN KEY (worker_id) REFERENCES workers(worker_id) ON DELETE CASCADE,
+                FOREIGN KEY (paid_by) REFERENCES workers(worker_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Create payment_production_links table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payment_production_links (
+                link_id INT AUTO_INCREMENT PRIMARY KEY,
+                payment_id INT NOT NULL,
+                production_id INT NOT NULL,
+                amount_allocated DECIMAL(10, 2) NOT NULL,
+                FOREIGN KEY (payment_id) REFERENCES payments(payment_id) ON DELETE CASCADE,
+                FOREIGN KEY (production_id) REFERENCES production(production_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Create activity_log table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                log_id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                action VARCHAR(50) NOT NULL,
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id INT NOT NULL,
+                details TEXT,
+                ip_address VARCHAR(45),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES workers(worker_id) ON DELETE CASCADE
+            )
+        """)
+        
+        # Check if admin exists
+        cursor.execute("SELECT COUNT(*) as count FROM workers WHERE is_admin = TRUE")
+        result = cursor.fetchone()
+        
+        admin_created = False
+        if result['count'] == 0:
+            # Create admin user
+            password_hash = generate_password_hash('9vvb70cz5h')
+            cursor.execute("""
+                INSERT INTO workers (name, phone_number, password_hash, is_admin)
+                VALUES (%s, %s, %s, TRUE)
+            """, ('Admin', '9986109356', password_hash))
+            admin_created = True
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Database setup completed successfully!',
+            'tables_created': ['workers', 'production', 'payments', 'payment_production_links', 'activity_log'],
+            'admin_created': admin_created,
+            'login': {'phone': '9986109356', 'password': '9vvb70cz5h'}
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
