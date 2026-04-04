@@ -120,12 +120,11 @@ def login():
     
     if request.method == 'POST':
         phone_number = request.form.get('phone_number', '').strip()
-        password = request.form.get('password', '')
         
         db = get_db()
         cursor = db.cursor()
         cursor.execute("""
-            SELECT worker_id, name, password_hash, is_admin, is_active 
+            SELECT worker_id, name, is_admin, is_active 
             FROM workers 
             WHERE phone_number = %s
         """, (phone_number,))
@@ -134,7 +133,7 @@ def login():
         cursor.close()
         db.close()
         
-        if user and user['is_active'] and check_password_hash(user['password_hash'], password):
+        if user and user['is_active']:
             session['user_id'] = user['worker_id']
             session['name'] = user['name']
             session['is_admin'] = user['is_admin']
@@ -148,7 +147,7 @@ def login():
             else:
                 return redirect(url_for('worker_dashboard'))
         else:
-            flash('Invalid phone number or password.', 'danger')
+            flash('Invalid phone number.', 'danger')
     
     return render_template('login.html')
 
