@@ -640,13 +640,13 @@ def record_payment():
         """, (worker_id,))
         
         approved_productions = cursor.fetchall()
-        remaining_amount = amount
+        remaining_amount = float(amount)
         
         for prod in approved_productions:
             if remaining_amount <= 0:
                 break
             
-            allocated = min(remaining_amount, prod['total_amount'])
+            allocated = min(remaining_amount, float(prod['total_amount']))
             
             cursor.execute("""
                 INSERT INTO payment_production_links (payment_id, production_id, amount_allocated)
