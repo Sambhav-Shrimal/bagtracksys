@@ -168,10 +168,9 @@ def register():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         phone_number = request.form.get('phone_number', '').strip()
-        password = request.form.get('password', '')
         
-        if not all([name, phone_number, password]):
-            flash('All fields are required.', 'danger')
+        if not all([name, phone_number]):
+            flash('Name and phone number are required.', 'danger')
             return render_template('register.html')
         
         db = get_db()
@@ -185,8 +184,9 @@ def register():
             db.close()
             return render_template('register.html')
         
-        # Create new worker
-        password_hash = generate_password_hash(password)
+        # Create new worker with auto-generated password (not used for login)
+        auto_password = secrets.token_hex(16)  # Random password
+        password_hash = generate_password_hash(auto_password)
         cursor.execute("""
             INSERT INTO workers (name, phone_number, password_hash, is_admin)
             VALUES (%s, %s, %s, FALSE)
@@ -199,7 +199,7 @@ def register():
         
         log_activity('REGISTER', 'user', worker_id, f'New worker registered: {name}')
         
-        flash('Registration successful! Please log in.', 'success')
+        flash('Registration successful! Please log in with your phone number.', 'success')
         return redirect(url_for('login'))
     
     return render_template('register.html')
