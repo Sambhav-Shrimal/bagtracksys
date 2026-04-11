@@ -220,12 +220,12 @@ def worker_dashboard():
     db = get_db()
     cursor = db.cursor()
     
-    # Get worker summary statistics with balance (using old field names for template compatibility)
+    # FIX: renamed 'balance' alias to 'total_pending' to match template
     cursor.execute("""
         SELECT 
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as total_pending
         FROM production p
         LEFT JOIN payments pay ON pay.worker_id = p.worker_id
         WHERE p.worker_id = %s
@@ -427,7 +427,7 @@ def admin_dashboard():
     
     stats = cursor.fetchone()
     
-    # Get worker summaries with balance calculation (using old field names for template compatibility)
+    # FIX: renamed 'balance' alias to 'total_pending' to match template
     cursor.execute("""
         SELECT 
             w.worker_id,
@@ -435,7 +435,7 @@ def admin_dashboard():
             w.phone_number,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as total_pending
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
         LEFT JOIN payments pay ON w.worker_id = pay.worker_id
@@ -672,14 +672,14 @@ def record_payment():
         flash(f'Payment of ₹{amount:.2f} recorded successfully!', 'success')
         return redirect(url_for('admin_dashboard'))
     
-    # GET request - show payment form with worker balances
+    # FIX: renamed 'balance' alias to 'pending_amount' to match template (data-pending attribute)
     cursor.execute("""
         SELECT 
             w.worker_id, 
             w.name,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as pending_amount
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
         LEFT JOIN payments pay ON w.worker_id = pay.worker_id
@@ -741,13 +741,13 @@ def worker_details(worker_id):
         db.close()
         return redirect(url_for('admin_dashboard'))
     
-    # Get production summary with balance (using old field names for template compatibility)
+    # FIX: renamed 'balance' alias to 'total_pending' to match template
     cursor.execute("""
         SELECT 
             COUNT(p.production_id) as total_submissions,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as total_pending,
             COALESCE(SUM(CASE WHEN p.status = 'SUBMITTED' THEN 1 ELSE 0 END), 0) as pending_review,
             COALESCE(SUM(CASE WHEN p.status = 'REJECTED' THEN 1 ELSE 0 END), 0) as rejected_count
         FROM production p
