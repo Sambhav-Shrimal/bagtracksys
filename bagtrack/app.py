@@ -220,10 +220,10 @@ def worker_dashboard():
     db = get_db()
     cursor = db.cursor()
     
-    # Get worker summary statistics with balance
+    # Get worker summary statistics with balance (using old field names for template compatibility)
     cursor.execute("""
         SELECT 
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
         FROM production p
@@ -427,13 +427,13 @@ def admin_dashboard():
     
     stats = cursor.fetchone()
     
-    # Get worker summaries with balance calculation
+    # Get worker summaries with balance calculation (using old field names for template compatibility)
     cursor.execute("""
         SELECT 
             w.worker_id,
             w.name,
             w.phone_number,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
         FROM workers w
@@ -677,7 +677,7 @@ def record_payment():
         SELECT 
             w.worker_id, 
             w.name,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
         FROM workers w
@@ -741,11 +741,11 @@ def worker_details(worker_id):
         db.close()
         return redirect(url_for('admin_dashboard'))
     
-    # Get production summary with balance
+    # Get production summary with balance (using old field names for template compatibility)
     cursor.execute("""
         SELECT 
             COUNT(p.production_id) as total_submissions,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
             COALESCE(SUM(pay.amount), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance,
             COALESCE(SUM(CASE WHEN p.status = 'SUBMITTED' THEN 1 ELSE 0 END), 0) as pending_review,
