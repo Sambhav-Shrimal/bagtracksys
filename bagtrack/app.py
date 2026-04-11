@@ -220,14 +220,15 @@ def worker_dashboard():
     db = get_db()
     cursor = db.cursor()
     
-    # Get worker summary statistics
+    # Get worker summary statistics with balance
     cursor.execute("""
         SELECT 
-            COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN total_amount ELSE 0 END), 0) as total_approved,
-            COALESCE(SUM(CASE WHEN status = 'PAYMENT_RECEIVED' THEN total_amount ELSE 0 END), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYMENT_SENT') THEN total_amount ELSE 0 END), 0) as total_pending
-        FROM production
-        WHERE worker_id = %s
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(pay.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
+        FROM production p
+        LEFT JOIN payments pay ON pay.worker_id = p.worker_id
+        WHERE p.worker_id = %s
     """, (worker_id,))
     
     summary = cursor.fetchone()
@@ -426,15 +427,15 @@ def admin_dashboard():
     
     stats = cursor.fetchone()
     
-    # Get worker summaries
+    # Get worker summaries with balance calculation
     cursor.execute("""
         SELECT 
             w.worker_id,
             w.name,
             w.phone_number,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_approved,
-            COALESCE(SUM(CASE WHEN pay.status = 'PAYMENT_RECEIVED' THEN pay.amount ELSE 0 END), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT') THEN p.total_amount ELSE 0 END), 0) as total_pending
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(pay.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
         LEFT JOIN payments pay ON w.worker_id = pay.worker_id
@@ -671,15 +672,19 @@ def record_payment():
         flash(f'Payment of ₹{amount:.2f} recorded successfully!', 'success')
         return redirect(url_for('admin_dashboard'))
     
-    # GET request - show payment form
+    # GET request - show payment form with worker balances
     cursor.execute("""
-        SELECT w.worker_id, w.name, 
-               COALESCE(SUM(CASE WHEN p.status = 'APPROVED' THEN p.total_amount ELSE 0 END), 0) as pending_amount
+        SELECT 
+            w.worker_id, 
+            w.name,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(pay.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
         FROM workers w
         LEFT JOIN production p ON w.worker_id = p.worker_id
+        LEFT JOIN payments pay ON w.worker_id = pay.worker_id
         WHERE w.is_admin = FALSE AND w.is_active = TRUE
         GROUP BY w.worker_id, w.name
-        HAVING pending_amount > 0
         ORDER BY w.name
     """)
     
@@ -736,17 +741,18 @@ def worker_details(worker_id):
         db.close()
         return redirect(url_for('admin_dashboard'))
     
-    # Get production summary
+    # Get production summary with balance
     cursor.execute("""
         SELECT 
-            COUNT(*) as total_submissions,
-            COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN total_amount ELSE 0 END), 0) as total_approved,
-            COALESCE(SUM(CASE WHEN status = 'PAYMENT_RECEIVED' THEN total_amount ELSE 0 END), 0) as total_paid,
-            COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYMENT_SENT') THEN total_amount ELSE 0 END), 0) as total_pending,
-            COALESCE(SUM(CASE WHEN status = 'SUBMITTED' THEN 1 ELSE 0 END), 0) as pending_review,
-            COALESCE(SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END), 0) as rejected_count
-        FROM production
-        WHERE worker_id = %s
+            COUNT(p.production_id) as total_submissions,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(pay.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance,
+            COALESCE(SUM(CASE WHEN p.status = 'SUBMITTED' THEN 1 ELSE 0 END), 0) as pending_review,
+            COALESCE(SUM(CASE WHEN p.status = 'REJECTED' THEN 1 ELSE 0 END), 0) as rejected_count
+        FROM production p
+        LEFT JOIN payments pay ON pay.worker_id = p.worker_id
+        WHERE p.worker_id = %s
     """, (worker_id,))
     
     production_summary = cursor.fetchone()
@@ -793,24 +799,32 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
-@app.route('/api/worker-pending/<int:worker_id>')
+@app.route('/api/worker-balance/<int:worker_id>')
 @admin_required
-def api_worker_pending(worker_id):
-    """API endpoint to get worker's pending amount"""
+def api_worker_balance(worker_id):
+    """API endpoint to get worker's balance (earned - paid)"""
     db = get_db()
     cursor = db.cursor()
     
     cursor.execute("""
-        SELECT COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN total_amount ELSE 0 END), 0) as pending_amount
-        FROM production
-        WHERE worker_id = %s
+        SELECT 
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(pay.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED') THEN p.total_amount ELSE 0 END), 0) - COALESCE(SUM(pay.amount), 0) as balance
+        FROM production p
+        LEFT JOIN payments pay ON pay.worker_id = p.worker_id
+        WHERE p.worker_id = %s
     """, (worker_id,))
     
     result = cursor.fetchone()
     cursor.close()
     db.close()
     
-    return jsonify({'pending_amount': float(result['pending_amount'])})
+    return jsonify({
+        'total_earned': float(result['total_earned']),
+        'total_paid': float(result['total_paid']),
+        'balance': float(result['balance'])
+    })
 
 
 @app.route('/setup-database-bagtrack-init-2026')
