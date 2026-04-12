@@ -100,7 +100,7 @@
                 <tr>
                     <td>{{ prod.submitted_at.strftime('%d %b') }}</td>
                     <td>
-                        <img src="{{ url_for('uploaded_file', filename=prod.photo_path) }}" 
+                        <img src="{{ prod.photo_path }}" 
                              class="image-thumbnail" 
                              alt="Production photo"
                              onclick="window.open(this.src, '_blank')">
