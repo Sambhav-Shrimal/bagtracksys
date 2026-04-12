@@ -245,7 +245,7 @@ def worker_dashboard():
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = %s
-            ), 0) as total_pending
+            ), 0) as balance
     """, (worker_id, worker_id, worker_id, worker_id))
 
     summary = cursor.fetchone()
