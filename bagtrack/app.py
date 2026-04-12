@@ -233,8 +233,7 @@ def worker_dashboard():
         SELECT
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) as total_approved,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
@@ -242,8 +241,7 @@ def worker_dashboard():
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = %s
@@ -262,22 +260,12 @@ def worker_dashboard():
 
     recent_submissions = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT payment_id, amount, payment_method, transaction_reference, paid_at
-        FROM payments
-        WHERE worker_id = %s AND status = 'PAYMENT_SENT'
-        ORDER BY paid_at DESC
-    """, (worker_id,))
-
-    pending_payments = cursor.fetchall()
-
     cursor.close()
     db.close()
 
     return render_template('worker_dashboard.html',
                            summary=summary,
-                           recent_submissions=recent_submissions,
-                           pending_payments=pending_payments)
+                           recent_submissions=recent_submissions)
 
 
 @app.route('/worker/submit-production', methods=['GET', 'POST'])
@@ -307,7 +295,7 @@ def submit_production():
             flash('Please upload a valid photo (PNG, JPG, JPEG, GIF, WEBP).', 'danger')
             return render_template('submit_production.html')
 
-        # CHANGED: store as base64 in DB instead of saving to disk
+        # Store as base64 in DB instead of saving to disk
         photo_data = file_to_base64(photo)
         total_amount = quantity * rate
 
@@ -358,54 +346,6 @@ def production_history():
     return render_template('production_history.html', productions=productions)
 
 
-@app.route('/worker/confirm-payment/<int:payment_id>', methods=['POST'])
-@login_required
-def confirm_payment(payment_id):
-    """Worker confirms payment has been received"""
-    if session.get('is_admin'):
-        flash('Admin users cannot confirm payments.', 'warning')
-        return redirect(url_for('admin_dashboard'))
-
-    worker_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute("""
-        SELECT payment_id FROM payments
-        WHERE payment_id = %s AND worker_id = %s AND status = 'PAYMENT_SENT'
-    """, (payment_id, worker_id))
-
-    payment = cursor.fetchone()
-
-    if not payment:
-        flash('Payment not found or already confirmed.', 'danger')
-        cursor.close()
-        db.close()
-        return redirect(url_for('worker_dashboard'))
-
-    cursor.execute("""
-        UPDATE payments
-        SET status = 'PAYMENT_RECEIVED', confirmed_at = NOW()
-        WHERE payment_id = %s
-    """, (payment_id,))
-
-    cursor.execute("""
-        UPDATE production p
-        INNER JOIN payment_production_links ppl ON p.production_id = ppl.production_id
-        SET p.status = 'PAYMENT_RECEIVED'
-        WHERE ppl.payment_id = %s AND p.status = 'PAYMENT_SENT'
-    """, (payment_id,))
-
-    db.commit()
-    cursor.close()
-    db.close()
-
-    log_activity('CONFIRM_PAYMENT', 'payment', payment_id, 'Worker confirmed payment received')
-
-    flash('Payment confirmed successfully!', 'success')
-    return redirect(url_for('worker_dashboard'))
-
-
 # ============================================================================
 # ADMIN DASHBOARD & ROUTES
 # ============================================================================
@@ -423,19 +363,17 @@ def admin_dashboard():
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
                 INNER JOIN workers w ON p.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE w.is_admin = FALSE AND p.status = 'APPROVED'
             ), 0) as total_production_value,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 INNER JOIN workers w ON pay.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE AND pay.status = 'PAYMENT_RECEIVED'
+                WHERE w.is_admin = FALSE
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
                 INNER JOIN workers w ON p.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE w.is_admin = FALSE AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 INNER JOIN workers w ON pay.worker_id = w.worker_id
@@ -452,8 +390,7 @@ def admin_dashboard():
             w.phone_number,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
             ), 0) as total_approved,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
@@ -461,8 +398,7 @@ def admin_dashboard():
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = w.worker_id
@@ -633,48 +569,20 @@ def record_payment():
             db.close()
             return redirect(url_for('record_payment'))
 
-        # CHANGED: store screenshot as base64 in DB instead of saving to disk
+        # Store screenshot as base64 in DB instead of saving to disk
         screenshot_data = None
         if screenshot and screenshot.filename and allowed_file(screenshot.filename):
             screenshot_data = file_to_base64(screenshot)
 
+        # Simplified: just record the payment, no linking to production rows
         cursor.execute("""
             INSERT INTO payments (worker_id, amount, payment_method, transaction_reference,
                                  payment_screenshot, paid_by, notes, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PAYMENT_SENT')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PAID')
         """, (worker_id, amount, payment_method, transaction_reference or None,
               screenshot_data, session['user_id'], notes or None))
 
         payment_id = cursor.lastrowid
-
-        cursor.execute("""
-            SELECT production_id, total_amount
-            FROM production
-            WHERE worker_id = %s AND status = 'APPROVED'
-            ORDER BY submitted_at ASC
-        """, (worker_id,))
-
-        approved_productions = cursor.fetchall()
-        remaining_amount = float(amount)
-
-        for prod in approved_productions:
-            if remaining_amount <= 0:
-                break
-
-            allocated = min(remaining_amount, float(prod['total_amount']))
-
-            cursor.execute("""
-                INSERT INTO payment_production_links (payment_id, production_id, amount_allocated)
-                VALUES (%s, %s, %s)
-            """, (payment_id, prod['production_id'], allocated))
-
-            cursor.execute("""
-                UPDATE production SET status = 'PAYMENT_SENT'
-                WHERE production_id = %s
-            """, (prod['production_id'],))
-
-            remaining_amount -= allocated
-
         db.commit()
         cursor.close()
         db.close()
@@ -691,8 +599,7 @@ def record_payment():
             w.name,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
             ), 0) as total_approved,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
@@ -700,8 +607,7 @@ def record_payment():
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = w.worker_id
@@ -768,8 +674,7 @@ def worker_details(worker_id):
             (SELECT COUNT(*) FROM production p WHERE p.worker_id = %s) as total_submissions,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) as total_approved,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
@@ -777,8 +682,7 @@ def worker_details(worker_id):
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = %s
@@ -840,8 +744,7 @@ def api_worker_balance(worker_id):
         SELECT
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) as total_earned,
             COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
@@ -849,8 +752,7 @@ def api_worker_balance(worker_id):
             ), 0) as total_paid,
             COALESCE((
                 SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s
-                  AND p.status IN ('APPROVED', 'PAYMENT_SENT', 'PAYMENT_RECEIVED')
+                WHERE p.worker_id = %s AND p.status = 'APPROVED'
             ), 0) - COALESCE((
                 SELECT SUM(pay.amount) FROM payments pay
                 WHERE pay.worker_id = %s
@@ -914,7 +816,7 @@ def setup_database():
                 payment_method VARCHAR(50) NOT NULL,
                 transaction_reference VARCHAR(100),
                 payment_screenshot MEDIUMTEXT,
-                status VARCHAR(50) DEFAULT 'PAYMENT_SENT',
+                status VARCHAR(50) DEFAULT 'PAID',
                 paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 confirmed_at TIMESTAMP NULL,
                 paid_by INT NOT NULL,
