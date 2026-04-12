@@ -13,7 +13,7 @@
         </h2>
         
         <div class="mb-3">
-            <img src="{{ url_for('uploaded_file', filename=production.photo_path) }}" 
+            <img src="{{ production.photo_path }}" 
                  alt="Production photo" 
                  class="production-image"
                  onclick="window.open(this.src, '_blank')"
