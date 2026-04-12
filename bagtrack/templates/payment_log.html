@@ -22,8 +22,6 @@
                     <th>Method</th>
                     <th>Reference</th>
                     <th>Paid By</th>
-                    <th>Status</th>
-                    <th>Confirmed</th>
                 </tr>
             </thead>
             <tbody>
@@ -40,18 +38,6 @@
                     </td>
                     <td>{{ payment.transaction_reference or '-' }}</td>
                     <td>{{ payment.paid_by_name }}</td>
-                    <td>
-                        <span class="badge badge-{{ payment.status.lower().replace('_', '-') }}">
-                            {{ payment.status.replace('_', ' ') }}
-                        </span>
-                    </td>
-                    <td>
-                        {% if payment.confirmed_at %}
-                            {{ payment.confirmed_at.strftime('%d %b %Y') }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
