@@ -88,5 +88,14 @@
     
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     {% block extra_js %}{% endblock %}
+
+    <script>
+document.querySelectorAll('img.image-thumbnail').forEach(function(img) {
+    if (!img.src.startsWith('data:image')) {
+        img.src = 'https://placehold.co/60x60?text=No+Image';
+    }
+});
+</script>
+    
 </body>
 </html>
