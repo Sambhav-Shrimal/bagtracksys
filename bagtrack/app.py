@@ -12,6 +12,7 @@ from functools import wraps
 from datetime import datetime, timedelta
 import os
 import secrets
+import base64
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -50,6 +51,16 @@ os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'payments'), exist_ok=True
 def allowed_file(filename):
     """Check if uploaded file has allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+
+def file_to_base64(file):
+    """Convert uploaded file to base64 data URI for storing in DB"""
+    file_bytes = file.read()
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    mime_map = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'gif': 'gif', 'webp': 'webp'}
+    mime = mime_map.get(ext, 'jpeg')
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    return f"data:image/{mime};base64,{b64}"
 
 
 def login_required(f):
@@ -218,7 +229,6 @@ def worker_dashboard():
     db = get_db()
     cursor = db.cursor()
 
-    # FIX: subqueries prevent cartesian product when joining production + payments
     cursor.execute("""
         SELECT
             COALESCE((
@@ -297,13 +307,8 @@ def submit_production():
             flash('Please upload a valid photo (PNG, JPG, JPEG, GIF, WEBP).', 'danger')
             return render_template('submit_production.html')
 
-        filename = secure_filename(photo.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        unique_filename = f"{worker_id}_{timestamp}_{filename}"
-        photo_path = f'production/{unique_filename}'
-        full_path = os.path.join(app.config['UPLOAD_FOLDER'], photo_path)
-        photo.save(full_path)
-
+        # CHANGED: store as base64 in DB instead of saving to disk
+        photo_data = file_to_base64(photo)
         total_amount = quantity * rate
 
         db = get_db()
@@ -311,7 +316,7 @@ def submit_production():
         cursor.execute("""
             INSERT INTO production (worker_id, photo_path, bag_type, quantity, rate, total_amount, status)
             VALUES (%s, %s, %s, %s, %s, %s, 'SUBMITTED')
-        """, (worker_id, photo_path, bag_type or None, quantity, rate, total_amount))
+        """, (worker_id, photo_data, bag_type or None, quantity, rate, total_amount))
 
         db.commit()
         production_id = cursor.lastrowid
@@ -412,7 +417,6 @@ def admin_dashboard():
     db = get_db()
     cursor = db.cursor()
 
-    # FIX: subqueries prevent cartesian product when joining production + payments
     cursor.execute("""
         SELECT
             (SELECT COUNT(*) FROM workers WHERE is_admin = FALSE AND is_active = TRUE) as total_workers,
@@ -441,7 +445,6 @@ def admin_dashboard():
 
     stats = cursor.fetchone()
 
-    # FIX: correlated subqueries per worker row — no cross-join possible
     cursor.execute("""
         SELECT
             w.worker_id,
@@ -630,21 +633,17 @@ def record_payment():
             db.close()
             return redirect(url_for('record_payment'))
 
-        screenshot_path = None
-        if screenshot and allowed_file(screenshot.filename):
-            filename = secure_filename(screenshot.filename)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            unique_filename = f"payment_{worker_id}_{timestamp}_{filename}"
-            screenshot_path = f'payments/{unique_filename}'
-            full_path = os.path.join(app.config['UPLOAD_FOLDER'], screenshot_path)
-            screenshot.save(full_path)
+        # CHANGED: store screenshot as base64 in DB instead of saving to disk
+        screenshot_data = None
+        if screenshot and screenshot.filename and allowed_file(screenshot.filename):
+            screenshot_data = file_to_base64(screenshot)
 
         cursor.execute("""
             INSERT INTO payments (worker_id, amount, payment_method, transaction_reference,
                                  payment_screenshot, paid_by, notes, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'PAYMENT_SENT')
         """, (worker_id, amount, payment_method, transaction_reference or None,
-              screenshot_path, session['user_id'], notes or None))
+              screenshot_data, session['user_id'], notes or None))
 
         payment_id = cursor.lastrowid
 
@@ -686,7 +685,6 @@ def record_payment():
         flash(f'Payment of ₹{amount:.2f} recorded successfully!', 'success')
         return redirect(url_for('admin_dashboard'))
 
-    # FIX: subqueries prevent cartesian product
     cursor.execute("""
         SELECT
             w.worker_id,
@@ -765,7 +763,6 @@ def worker_details(worker_id):
         db.close()
         return redirect(url_for('admin_dashboard'))
 
-    # FIX: subqueries prevent cartesian product
     cursor.execute("""
         SELECT
             (SELECT COUNT(*) FROM production p WHERE p.worker_id = %s) as total_submissions,
@@ -828,7 +825,7 @@ def worker_details(worker_id):
 @app.route('/uploads/<path:filename>')
 @login_required
 def uploaded_file(filename):
-    """Serve uploaded files"""
+    """Serve uploaded files (kept for backward compatibility)"""
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
@@ -894,7 +891,7 @@ def setup_database():
             CREATE TABLE IF NOT EXISTS production (
                 production_id INT AUTO_INCREMENT PRIMARY KEY,
                 worker_id INT NOT NULL,
-                photo_path VARCHAR(255) NOT NULL,
+                photo_path MEDIUMTEXT NOT NULL,
                 bag_type VARCHAR(100),
                 quantity INT NOT NULL,
                 rate DECIMAL(10, 2) NOT NULL,
@@ -916,7 +913,7 @@ def setup_database():
                 amount DECIMAL(10, 2) NOT NULL,
                 payment_method VARCHAR(50) NOT NULL,
                 transaction_reference VARCHAR(100),
-                payment_screenshot VARCHAR(255),
+                payment_screenshot MEDIUMTEXT,
                 status VARCHAR(50) DEFAULT 'PAYMENT_SENT',
                 paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 confirmed_at TIMESTAMP NULL,
