@@ -16,8 +16,8 @@
         <div class="stat-label">Total Paid</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">₹{{ "%.2f"|format(summary.total_pending) }}</div>
-        <div class="stat-label">Total Pending</div>
+        <div class="stat-value">₹{{ "%.2f"|format(summary.balance) }}</div>
+        <div class="stat-label">Balance Due</div>
     </div>
 </div>
 
@@ -35,46 +35,6 @@
         <div class="action-desc">See all your submissions</div>
     </a>
 </div>
-
-<!-- Pending Payment Confirmations -->
-{% if pending_payments %}
-<div class="table-container">
-    <div class="table-header">
-        <span>⚠️ Pending Payment Confirmations</span>
-        <span class="badge badge-payment-sent">{{ pending_payments|length }}</span>
-    </div>
-    <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Method</th>
-                    <th>Reference</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for payment in pending_payments %}
-                <tr>
-                    <td>{{ payment.paid_at.strftime('%d %b %Y') }}</td>
-                    <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(payment.amount) }}</td>
-                    <td>{{ payment.payment_method }}</td>
-                    <td>{{ payment.transaction_reference or '-' }}</td>
-                    <td>
-                        <form method="POST" action="{{ url_for('confirm_payment', payment_id=payment.payment_id) }}" style="display: inline;">
-                            <button type="submit" class="btn btn-success" onclick="return confirm('Confirm that you have received this payment?')">
-                                ✓ Confirm Received
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
 
 <!-- Recent Submissions -->
 {% if recent_submissions %}
@@ -100,8 +60,8 @@
                 <tr>
                     <td>{{ prod.submitted_at.strftime('%d %b') }}</td>
                     <td>
-                        <img src="{{ prod.photo_path }}" 
-                             class="image-thumbnail" 
+                        <img src="{{ prod.photo_path }}"
+                             class="image-thumbnail"
                              alt="Production photo"
                              onclick="window.open(this.src, '_blank')">
                     </td>
@@ -110,8 +70,8 @@
                     <td>₹{{ "%.2f"|format(prod.rate) }}</td>
                     <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
                     <td>
-                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
-                            {{ prod.status.replace('_', ' ') }}
+                        <span class="badge badge-{{ prod.status.lower() }}">
+                            {{ prod.status }}
                         </span>
                     </td>
                 </tr>
