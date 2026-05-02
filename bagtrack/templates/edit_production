@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Production{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Edit Production</h1>
+
+<div class="form-container">
+    <form method="POST" action="{{ url_for('edit_production', production_id=production.production_id) }}" enctype="multipart/form-data" id="editForm">
+
+        <div class="form-group">
+            <label class="form-label">Current Photo</label>
+            <div style="margin-bottom: 0.5rem;">
+                <img src="{{ production.photo_path }}" alt="Current photo"
+                     style="max-width: 200px; border-radius: var(--radius-sm);">
+            </div>
+            <label class="form-label" for="photo">Replace Photo (optional)</label>
+            <input type="file" id="photo" name="photo" class="form-file"
+                   accept="image/*" capture="environment">
+            <div style="font-size: 0.75rem; color: var(--color-gray); margin-top: 0.5rem;">
+                Leave blank to keep current photo
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="bag_type">Bag Type</label>
+            <input type="text" id="bag_type" name="bag_type" class="form-input"
+                   value="{{ production.bag_type or '' }}"
+                   placeholder="e.g., Small, Medium, Large">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="quantity">Quantity *</label>
+            <input type="number" id="quantity" name="quantity" class="form-input"
+                   value="{{ production.quantity }}" min="1" required
+                   oninput="calculateTotal()">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="rate">Rate per Bag (₹) *</label>
+            <input type="number" id="rate" name="rate" class="form-input"
+                   value="{{ production.rate }}" min="0.01" step="0.01" required
+                   oninput="calculateTotal()">
+        </div>
+
+        <!-- Total Amount Display -->
+        <div class="form-group">
+            <div style="background: rgba(255, 107, 53, 0.1); border: 2px solid var(--color-accent); border-radius: var(--radius-sm); padding: 1rem; text-align: center;">
+                <div style="font-size: 0.875rem; color: var(--color-gray-light); margin-bottom: 0.25rem;">TOTAL AMOUNT</div>
+                <div id="totalAmount" style="font-family: var(--font-display); font-size: 2.5rem; color: var(--color-accent);">
+                    ₹{{ "%.2f"|format(production.total_amount) }}
+                </div>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success btn-block">✓ Save Changes</button>
+            <a href="{{ url_for('production_history') }}" class="btn btn-secondary btn-block">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function calculateTotal() {
+    const quantity = parseFloat(document.getElementById('quantity').value) || 0;
+    const rate = parseFloat(document.getElementById('rate').value) || 0;
+    document.getElementById('totalAmount').textContent = '₹' + (quantity * rate).toFixed(2);
+}
+</script>
+{% endblock %}
