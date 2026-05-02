@@ -39,7 +39,7 @@
     </div>
     <div class="stat-card">
         <div class="stat-value">₹{{ "%.0f"|format(production_summary.total_pending) }}</div>
-        <div class="stat-label">Total Pending</div>
+        <div class="stat-label">Balance Due</div>
     </div>
     <div class="stat-card">
         <div class="stat-value">{{ production_summary.pending_review }}</div>
@@ -81,6 +81,7 @@
                     <th>Rate</th>
                     <th>Total</th>
                     <th>Status</th>
+                    <th>Delete</th>
                 </tr>
             </thead>
             <tbody>
@@ -88,8 +89,8 @@
                 <tr>
                     <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
                     <td>
-                        <img src="{{ prod.photo_path }}" 
-                             class="image-thumbnail" 
+                        <img src="{{ prod.photo_path }}"
+                             class="image-thumbnail"
                              alt="Production"
                              onclick="window.open(this.src, '_blank')">
                     </td>
@@ -98,9 +99,16 @@
                     <td>₹{{ "%.2f"|format(prod.rate) }}</td>
                     <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
                     <td>
-                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
-                            {{ prod.status.replace('_', ' ') }}
+                        <span class="badge badge-{{ prod.status.lower() }}">
+                            {{ prod.status }}
                         </span>
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_delete_production', production_id=prod.production_id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-danger"
+                                style="padding: 0.4rem 0.75rem; font-size: 0.75rem;"
+                                onclick="return confirm('Delete this production entry?')">🗑️</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -124,8 +132,6 @@
                     <th>Amount</th>
                     <th>Method</th>
                     <th>Reference</th>
-                    <th>Status</th>
-                    <th>Confirmed</th>
                 </tr>
             </thead>
             <tbody>
@@ -135,18 +141,6 @@
                     <td class="text-success" style="font-weight: 600;">₹{{ "%.2f"|format(payment.amount) }}</td>
                     <td>{{ payment.payment_method.replace('_', ' ') }}</td>
                     <td>{{ payment.transaction_reference or '-' }}</td>
-                    <td>
-                        <span class="badge badge-{{ payment.status.lower().replace('_', '-') }}">
-                            {{ payment.status.replace('_', ' ') }}
-                        </span>
-                    </td>
-                    <td>
-                        {% if payment.confirmed_at %}
-                            {{ payment.confirmed_at.strftime('%d %b %Y') }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
