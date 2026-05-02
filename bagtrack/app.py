@@ -95,12 +95,10 @@ def log_activity(action, entity_type, entity_id, details=None):
         cursor = db.cursor()
         ip_address = request.remote_addr
         user_id = session.get('user_id')
-
         cursor.execute("""
             INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (user_id, action, entity_type, entity_id, details, ip_address))
-
         db.commit()
         cursor.close()
         db.close()
@@ -114,7 +112,6 @@ def log_activity(action, entity_type, entity_id, details=None):
 
 @app.route('/')
 def index():
-    """Landing page - redirect based on login status"""
     if 'user_id' in session:
         if session.get('is_admin'):
             return redirect(url_for('admin_dashboard'))
@@ -125,21 +122,17 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """User login page"""
     if 'user_id' in session:
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         phone_number = request.form.get('phone_number', '').strip()
-
         db = get_db()
         cursor = db.cursor()
         cursor.execute("""
             SELECT worker_id, name, is_admin, is_active
-            FROM workers
-            WHERE phone_number = %s
+            FROM workers WHERE phone_number = %s
         """, (phone_number,))
-
         user = cursor.fetchone()
         cursor.close()
         db.close()
@@ -148,11 +141,8 @@ def login():
             session['user_id'] = user['worker_id']
             session['name'] = user['name']
             session['is_admin'] = user['is_admin']
-
             log_activity('LOGIN', 'user', user['worker_id'], 'User logged in')
-
             flash(f'Welcome back, {user["name"]}!', 'success')
-
             if user['is_admin']:
                 return redirect(url_for('admin_dashboard'))
             else:
@@ -166,7 +156,6 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
-    """User logout"""
     log_activity('LOGOUT', 'user', session['user_id'], 'User logged out')
     session.clear()
     flash('You have been logged out successfully.', 'info')
@@ -175,7 +164,6 @@ def logout():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Worker registration"""
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         phone_number = request.form.get('phone_number', '').strip()
@@ -186,7 +174,6 @@ def register():
 
         db = get_db()
         cursor = db.cursor()
-
         cursor.execute("SELECT worker_id FROM workers WHERE phone_number = %s", (phone_number,))
         if cursor.fetchone():
             flash('Phone number already registered.', 'danger')
@@ -200,14 +187,12 @@ def register():
             INSERT INTO workers (name, phone_number, password_hash, is_admin)
             VALUES (%s, %s, %s, FALSE)
         """, (name, phone_number, password_hash))
-
         db.commit()
         worker_id = cursor.lastrowid
         cursor.close()
         db.close()
 
         log_activity('REGISTER', 'user', worker_id, f'New worker registered: {name}')
-
         flash('Registration successful! Please log in with your phone number.', 'success')
         return redirect(url_for('login'))
 
@@ -215,13 +200,12 @@ def register():
 
 
 # ============================================================================
-# WORKER DASHBOARD & ROUTES
+# WORKER ROUTES
 # ============================================================================
 
 @app.route('/worker/dashboard')
 @login_required
 def worker_dashboard():
-    """Worker dashboard showing summary and quick actions"""
     if session.get('is_admin'):
         return redirect(url_for('admin_dashboard'))
 
@@ -231,47 +215,42 @@ def worker_dashboard():
 
     cursor.execute("""
         SELECT
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) as total_approved,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as balance
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0) as total_approved,
+            COALESCE((SELECT SUM(amount) FROM payments
+                      WHERE worker_id = %s), 0) as total_paid,
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(amount) FROM payments
+                        WHERE worker_id = %s), 0) as balance
     """, (worker_id, worker_id, worker_id, worker_id))
-
     summary = cursor.fetchone()
 
     cursor.execute("""
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount, status, submitted_at
-        FROM production
-        WHERE worker_id = %s
-        ORDER BY submitted_at DESC
-        LIMIT 10
+        FROM production WHERE worker_id = %s
+        ORDER BY submitted_at DESC LIMIT 10
     """, (worker_id,))
-
     recent_submissions = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT payment_id, amount, payment_method, transaction_reference, paid_at
+        FROM payments WHERE worker_id = %s
+        ORDER BY paid_at DESC
+    """, (worker_id,))
+    payments = cursor.fetchall()
 
     cursor.close()
     db.close()
-
     return render_template('worker_dashboard.html',
                            summary=summary,
-                           recent_submissions=recent_submissions)
+                           recent_submissions=recent_submissions,
+                           payments=payments)
 
 
 @app.route('/worker/submit-production', methods=['GET', 'POST'])
 @login_required
 def submit_production():
-    """Worker submits new production entry"""
     if session.get('is_admin'):
         flash('Admin users cannot submit production.', 'warning')
         return redirect(url_for('admin_dashboard'))
@@ -286,16 +265,13 @@ def submit_production():
         if not quantity or quantity <= 0:
             flash('Please enter a valid quantity.', 'danger')
             return render_template('submit_production.html')
-
         if not rate or rate <= 0:
             flash('Please enter a valid rate.', 'danger')
             return render_template('submit_production.html')
-
         if not photo or not allowed_file(photo.filename):
             flash('Please upload a valid photo (PNG, JPG, JPEG, GIF, WEBP).', 'danger')
             return render_template('submit_production.html')
 
-        # Store as base64 in DB instead of saving to disk
         photo_data = file_to_base64(photo)
         total_amount = quantity * rate
 
@@ -305,7 +281,6 @@ def submit_production():
             INSERT INTO production (worker_id, photo_path, bag_type, quantity, rate, total_amount, status)
             VALUES (%s, %s, %s, %s, %s, %s, 'SUBMITTED')
         """, (worker_id, photo_data, bag_type or None, quantity, rate, total_amount))
-
         db.commit()
         production_id = cursor.lastrowid
         cursor.close()
@@ -313,17 +288,16 @@ def submit_production():
 
         log_activity('SUBMIT_PRODUCTION', 'production', production_id,
                      f'Submitted: {quantity} bags @ ₹{rate} = ₹{total_amount}')
-
         flash(f'Production submitted successfully! Total: ₹{total_amount:.2f}', 'success')
         return redirect(url_for('worker_dashboard'))
 
     return render_template('submit_production.html')
 
 
-@app.route('/worker/production-history')
+@app.route('/worker/edit-production/<int:production_id>', methods=['GET', 'POST'])
 @login_required
-def production_history():
-    """View all production submissions for worker"""
+def edit_production(production_id):
+    """Worker edits a SUBMITTED production entry"""
     if session.get('is_admin'):
         return redirect(url_for('admin_dashboard'))
 
@@ -331,83 +305,151 @@ def production_history():
     db = get_db()
     cursor = db.cursor()
 
+    # Only allow editing own SUBMITTED entries
+    cursor.execute("""
+        SELECT * FROM production
+        WHERE production_id = %s AND worker_id = %s AND status = 'SUBMITTED'
+    """, (production_id, worker_id))
+    production = cursor.fetchone()
+
+    if not production:
+        flash('Entry not found or cannot be edited.', 'danger')
+        cursor.close()
+        db.close()
+        return redirect(url_for('production_history'))
+
+    if request.method == 'POST':
+        bag_type = request.form.get('bag_type', '').strip()
+        quantity = request.form.get('quantity', type=int)
+        rate = request.form.get('rate', type=float)
+        photo = request.files.get('photo')
+
+        if not quantity or quantity <= 0:
+            flash('Please enter a valid quantity.', 'danger')
+            return render_template('edit_production.html', production=production)
+        if not rate or rate <= 0:
+            flash('Please enter a valid rate.', 'danger')
+            return render_template('edit_production.html', production=production)
+
+        total_amount = quantity * rate
+
+        # Only update photo if a new one was uploaded
+        if photo and photo.filename and allowed_file(photo.filename):
+            photo_data = file_to_base64(photo)
+        else:
+            photo_data = production['photo_path']
+
+        cursor.execute("""
+            UPDATE production
+            SET bag_type = %s, quantity = %s, rate = %s, total_amount = %s, photo_path = %s
+            WHERE production_id = %s AND worker_id = %s AND status = 'SUBMITTED'
+        """, (bag_type or None, quantity, rate, total_amount, photo_data, production_id, worker_id))
+        db.commit()
+        cursor.close()
+        db.close()
+
+        log_activity('EDIT_PRODUCTION', 'production', production_id,
+                     f'Edited: {quantity} bags @ ₹{rate} = ₹{total_amount}')
+        flash('Production updated successfully!', 'success')
+        return redirect(url_for('production_history'))
+
+    cursor.close()
+    db.close()
+    return render_template('edit_production.html', production=production)
+
+
+@app.route('/worker/delete-production/<int:production_id>', methods=['POST'])
+@login_required
+def delete_production(production_id):
+    """Worker deletes a SUBMITTED production entry"""
+    if session.get('is_admin'):
+        return redirect(url_for('admin_dashboard'))
+
+    worker_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
+
+    # Only allow deleting own SUBMITTED entries
+    cursor.execute("""
+        DELETE FROM production
+        WHERE production_id = %s AND worker_id = %s AND status = 'SUBMITTED'
+    """, (production_id, worker_id))
+    db.commit()
+
+    if cursor.rowcount == 0:
+        flash('Entry not found or cannot be deleted.', 'danger')
+    else:
+        log_activity('DELETE_PRODUCTION', 'production', production_id, 'Worker deleted entry')
+        flash('Production entry deleted.', 'success')
+
+    cursor.close()
+    db.close()
+    return redirect(url_for('production_history'))
+
+
+@app.route('/worker/production-history')
+@login_required
+def production_history():
+    if session.get('is_admin'):
+        return redirect(url_for('admin_dashboard'))
+
+    worker_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
     cursor.execute("""
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount,
                status, rejection_reason, submitted_at, reviewed_at
-        FROM production
-        WHERE worker_id = %s
-        ORDER BY submitted_at DESC
+        FROM production WHERE worker_id = %s ORDER BY submitted_at DESC
     """, (worker_id,))
-
     productions = cursor.fetchall()
     cursor.close()
     db.close()
-
     return render_template('production_history.html', productions=productions)
 
 
 # ============================================================================
-# ADMIN DASHBOARD & ROUTES
+# ADMIN ROUTES
 # ============================================================================
 
 @app.route('/admin/dashboard')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard with overview statistics"""
     db = get_db()
     cursor = db.cursor()
 
     cursor.execute("""
         SELECT
             (SELECT COUNT(*) FROM workers WHERE is_admin = FALSE AND is_active = TRUE) as total_workers,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                INNER JOIN workers w ON p.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE AND p.status = 'APPROVED'
-            ), 0) as total_production_value,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                INNER JOIN workers w ON pay.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                INNER JOIN workers w ON p.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                INNER JOIN workers w ON pay.worker_id = w.worker_id
-                WHERE w.is_admin = FALSE
-            ), 0) as total_pending
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      INNER JOIN workers w ON p.worker_id = w.worker_id
+                      WHERE w.is_admin = FALSE AND p.status = 'APPROVED'), 0) as total_production_value,
+            COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                      INNER JOIN workers w ON pay.worker_id = w.worker_id
+                      WHERE w.is_admin = FALSE), 0) as total_paid,
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      INNER JOIN workers w ON p.worker_id = w.worker_id
+                      WHERE w.is_admin = FALSE AND p.status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                        INNER JOIN workers w ON pay.worker_id = w.worker_id
+                        WHERE w.is_admin = FALSE), 0) as total_pending
     """)
-
     stats = cursor.fetchone()
 
     cursor.execute("""
         SELECT
-            w.worker_id,
-            w.name,
-            w.phone_number,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
-            ), 0) as total_approved,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = w.worker_id
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = w.worker_id
-            ), 0) as total_pending
+            w.worker_id, w.name, w.phone_number,
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'), 0) as total_approved,
+            COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                      WHERE pay.worker_id = w.worker_id), 0) as total_paid,
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                        WHERE pay.worker_id = w.worker_id), 0) as total_pending
         FROM workers w
         WHERE w.is_admin = FALSE AND w.is_active = TRUE
         ORDER BY w.name
     """)
-
     workers = cursor.fetchall()
 
     cursor.execute("""
@@ -418,22 +460,18 @@ def admin_dashboard():
         WHERE p.status = 'SUBMITTED'
         ORDER BY p.submitted_at ASC
     """)
-
     pending_submissions = cursor.fetchall()
 
     cursor.close()
     db.close()
-
     return render_template('admin_dashboard.html',
-                           stats=stats,
-                           workers=workers,
+                           stats=stats, workers=workers,
                            pending_submissions=pending_submissions)
 
 
 @app.route('/admin/production-log')
 @admin_required
 def production_log():
-    """View all production submissions with filters"""
     worker_id = request.args.get('worker_id', type=int)
     status = request.args.get('status', '')
     date_from = request.args.get('date_from', '')
@@ -452,23 +490,18 @@ def production_log():
         WHERE 1=1
     """
     params = []
-
     if worker_id:
         query += " AND p.worker_id = %s"
         params.append(worker_id)
-
     if status:
         query += " AND p.status = %s"
         params.append(status)
-
     if date_from:
         query += " AND DATE(p.submitted_at) >= %s"
         params.append(date_from)
-
     if date_to:
         query += " AND DATE(p.submitted_at) <= %s"
         params.append(date_to)
-
     query += " ORDER BY p.submitted_at DESC"
 
     cursor.execute(query, params)
@@ -479,10 +512,8 @@ def production_log():
 
     cursor.close()
     db.close()
-
     return render_template('production_log.html',
-                           productions=productions,
-                           workers=workers,
+                           productions=productions, workers=workers,
                            filters={'worker_id': worker_id, 'status': status,
                                     'date_from': date_from, 'date_to': date_to})
 
@@ -490,7 +521,6 @@ def production_log():
 @app.route('/admin/review-production/<int:production_id>', methods=['GET', 'POST'])
 @admin_required
 def review_production(production_id):
-    """Admin reviews and approves/rejects production submission"""
     db = get_db()
     cursor = db.cursor()
 
@@ -500,11 +530,9 @@ def review_production(production_id):
 
         if action == 'approve':
             cursor.execute("""
-                UPDATE production
-                SET status = 'APPROVED', reviewed_at = NOW(), reviewed_by = %s
+                UPDATE production SET status = 'APPROVED', reviewed_at = NOW(), reviewed_by = %s
                 WHERE production_id = %s AND status = 'SUBMITTED'
             """, (session['user_id'], production_id))
-
             db.commit()
             log_activity('APPROVE_PRODUCTION', 'production', production_id, 'Production approved')
             flash('Production approved successfully!', 'success')
@@ -515,13 +543,11 @@ def review_production(production_id):
                 cursor.close()
                 db.close()
                 return redirect(url_for('review_production', production_id=production_id))
-
             cursor.execute("""
-                UPDATE production
-                SET status = 'REJECTED', rejection_reason = %s, reviewed_at = NOW(), reviewed_by = %s
+                UPDATE production SET status = 'REJECTED', rejection_reason = %s,
+                reviewed_at = NOW(), reviewed_by = %s
                 WHERE production_id = %s AND status = 'SUBMITTED'
             """, (rejection_reason, session['user_id'], production_id))
-
             db.commit()
             log_activity('REJECT_PRODUCTION', 'production', production_id, f'Rejected: {rejection_reason}')
             flash('Production rejected.', 'info')
@@ -536,7 +562,6 @@ def review_production(production_id):
         INNER JOIN workers w ON p.worker_id = w.worker_id
         WHERE p.production_id = %s
     """, (production_id,))
-
     production = cursor.fetchone()
     cursor.close()
     db.close()
@@ -548,10 +573,34 @@ def review_production(production_id):
     return render_template('review_production.html', production=production)
 
 
+@app.route('/admin/delete-production/<int:production_id>', methods=['POST'])
+@admin_required
+def admin_delete_production(production_id):
+    """Admin deletes any production entry"""
+    db = get_db()
+    cursor = db.cursor()
+
+    # Get worker_id first so we can redirect back to their details page
+    cursor.execute("SELECT worker_id FROM production WHERE production_id = %s", (production_id,))
+    prod = cursor.fetchone()
+
+    cursor.execute("DELETE FROM production WHERE production_id = %s", (production_id,))
+    db.commit()
+
+    log_activity('ADMIN_DELETE_PRODUCTION', 'production', production_id, 'Admin deleted entry')
+    flash('Production entry deleted.', 'success')
+
+    cursor.close()
+    db.close()
+
+    if prod:
+        return redirect(url_for('worker_details', worker_id=prod['worker_id']))
+    return redirect(url_for('admin_dashboard'))
+
+
 @app.route('/admin/record-payment', methods=['GET', 'POST'])
 @admin_required
 def record_payment():
-    """Admin records a payment made to worker"""
     db = get_db()
     cursor = db.cursor()
 
@@ -569,12 +618,10 @@ def record_payment():
             db.close()
             return redirect(url_for('record_payment'))
 
-        # Store screenshot as base64 in DB instead of saving to disk
         screenshot_data = None
         if screenshot and screenshot.filename and allowed_file(screenshot.filename):
             screenshot_data = file_to_base64(screenshot)
 
-        # Simplified: just record the payment, no linking to production rows
         cursor.execute("""
             INSERT INTO payments (worker_id, amount, payment_method, transaction_reference,
                                  payment_screenshot, paid_by, notes, status)
@@ -589,48 +636,35 @@ def record_payment():
 
         log_activity('RECORD_PAYMENT', 'payment', payment_id,
                      f'Recorded payment of ₹{amount} to worker {worker_id}')
-
         flash(f'Payment of ₹{amount:.2f} recorded successfully!', 'success')
         return redirect(url_for('admin_dashboard'))
 
     cursor.execute("""
         SELECT
-            w.worker_id,
-            w.name,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
-            ), 0) as total_approved,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = w.worker_id
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = w.worker_id
-            ), 0) as pending_amount
+            w.worker_id, w.name,
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'), 0) as total_approved,
+            COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                      WHERE pay.worker_id = w.worker_id), 0) as total_paid,
+            COALESCE((SELECT SUM(p.total_amount) FROM production p
+                      WHERE p.worker_id = w.worker_id AND p.status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                        WHERE pay.worker_id = w.worker_id), 0) as pending_amount
         FROM workers w
         WHERE w.is_admin = FALSE AND w.is_active = TRUE
         ORDER BY w.name
     """)
-
     workers = cursor.fetchall()
     cursor.close()
     db.close()
-
     return render_template('record_payment.html', workers=workers)
 
 
 @app.route('/admin/payment-log')
 @admin_required
 def payment_log():
-    """View all payment records"""
     db = get_db()
     cursor = db.cursor()
-
     cursor.execute("""
         SELECT pay.payment_id, w.name as worker_name, pay.amount, pay.payment_method,
                pay.transaction_reference, pay.status, pay.paid_at, pay.confirmed_at,
@@ -640,27 +674,22 @@ def payment_log():
         INNER JOIN workers pb ON pay.paid_by = pb.worker_id
         ORDER BY pay.paid_at DESC
     """)
-
     payments = cursor.fetchall()
     cursor.close()
     db.close()
-
     return render_template('payment_log.html', payments=payments)
 
 
 @app.route('/admin/worker-details/<int:worker_id>')
 @admin_required
 def worker_details(worker_id):
-    """View detailed information about a specific worker"""
     db = get_db()
     cursor = db.cursor()
 
     cursor.execute("""
         SELECT worker_id, name, phone_number, created_at
-        FROM workers
-        WHERE worker_id = %s AND is_admin = FALSE
+        FROM workers WHERE worker_id = %s AND is_admin = FALSE
     """, (worker_id,))
-
     worker = cursor.fetchone()
 
     if not worker:
@@ -671,50 +700,34 @@ def worker_details(worker_id):
 
     cursor.execute("""
         SELECT
-            (SELECT COUNT(*) FROM production p WHERE p.worker_id = %s) as total_submissions,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) as total_approved,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as total_pending,
-            (SELECT COUNT(*) FROM production p WHERE p.worker_id = %s AND p.status = 'SUBMITTED') as pending_review,
-            (SELECT COUNT(*) FROM production p WHERE p.worker_id = %s AND p.status = 'REJECTED') as rejected_count
+            (SELECT COUNT(*) FROM production WHERE worker_id = %s) as total_submissions,
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0) as total_approved,
+            COALESCE((SELECT SUM(amount) FROM payments
+                      WHERE worker_id = %s), 0) as total_paid,
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(amount) FROM payments
+                        WHERE worker_id = %s), 0) as total_pending,
+            (SELECT COUNT(*) FROM production WHERE worker_id = %s AND status = 'SUBMITTED') as pending_review,
+            (SELECT COUNT(*) FROM production WHERE worker_id = %s AND status = 'REJECTED') as rejected_count
     """, (worker_id, worker_id, worker_id, worker_id, worker_id, worker_id, worker_id))
-
     production_summary = cursor.fetchone()
 
     cursor.execute("""
         SELECT production_id, photo_path, bag_type, quantity, rate, total_amount, status, submitted_at
-        FROM production
-        WHERE worker_id = %s
-        ORDER BY submitted_at DESC
-        LIMIT 20
+        FROM production WHERE worker_id = %s ORDER BY submitted_at DESC LIMIT 20
     """, (worker_id,))
-
     productions = cursor.fetchall()
 
     cursor.execute("""
         SELECT payment_id, amount, payment_method, transaction_reference, status, paid_at, confirmed_at
-        FROM payments
-        WHERE worker_id = %s
-        ORDER BY paid_at DESC
+        FROM payments WHERE worker_id = %s ORDER BY paid_at DESC
     """, (worker_id,))
-
     payments = cursor.fetchall()
 
     cursor.close()
     db.close()
-
     return render_template('worker_details.html',
                            worker=worker,
                            production_summary=production_summary,
@@ -736,33 +749,22 @@ def uploaded_file(filename):
 @app.route('/api/worker-balance/<int:worker_id>')
 @admin_required
 def api_worker_balance(worker_id):
-    """API endpoint to get worker's balance (earned - paid)"""
     db = get_db()
     cursor = db.cursor()
-
     cursor.execute("""
         SELECT
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) as total_earned,
-            COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as total_paid,
-            COALESCE((
-                SELECT SUM(p.total_amount) FROM production p
-                WHERE p.worker_id = %s AND p.status = 'APPROVED'
-            ), 0) - COALESCE((
-                SELECT SUM(pay.amount) FROM payments pay
-                WHERE pay.worker_id = %s
-            ), 0) as balance
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0) as total_earned,
+            COALESCE((SELECT SUM(amount) FROM payments
+                      WHERE worker_id = %s), 0) as total_paid,
+            COALESCE((SELECT SUM(total_amount) FROM production
+                      WHERE worker_id = %s AND status = 'APPROVED'), 0)
+            - COALESCE((SELECT SUM(amount) FROM payments
+                        WHERE worker_id = %s), 0) as balance
     """, (worker_id, worker_id, worker_id, worker_id))
-
     result = cursor.fetchone()
     cursor.close()
     db.close()
-
     return jsonify({
         'total_earned': float(result['total_earned']),
         'total_paid': float(result['total_paid']),
@@ -772,7 +774,6 @@ def api_worker_balance(worker_id):
 
 @app.route('/setup-database-bagtrack-init-2026')
 def setup_database():
-    """One-time database setup - creates all tables and admin user"""
     try:
         db = get_db()
         cursor = db.cursor()
@@ -853,7 +854,6 @@ def setup_database():
 
         cursor.execute("SELECT COUNT(*) as count FROM workers WHERE is_admin = TRUE")
         result = cursor.fetchone()
-
         admin_created = False
         if result['count'] == 0:
             password_hash = generate_password_hash('9vvb70cz5h')
@@ -876,15 +876,8 @@ def setup_database():
         })
 
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-# ============================================================================
-# ERROR HANDLERS
-# ============================================================================
 
 @app.errorhandler(404)
 def not_found(e):
@@ -895,10 +888,6 @@ def not_found(e):
 def server_error(e):
     return render_template('error.html', error_code=500, error_message='Internal server error'), 500
 
-
-# ============================================================================
-# MAIN ENTRY POINT
-# ============================================================================
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
