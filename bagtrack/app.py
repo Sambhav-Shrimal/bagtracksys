@@ -580,7 +580,6 @@ def admin_delete_production(production_id):
     db = get_db()
     cursor = db.cursor()
 
-    # Get worker_id first so we can redirect back to their details page
     cursor.execute("SELECT worker_id FROM production WHERE production_id = %s", (production_id,))
     prod = cursor.fetchone()
 
@@ -593,9 +592,10 @@ def admin_delete_production(production_id):
     cursor.close()
     db.close()
 
-    if prod:
+    referrer = request.referrer or ''
+    if 'worker-details' in referrer and prod:
         return redirect(url_for('worker_details', worker_id=prod['worker_id']))
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('production_log'))
 
 
 @app.route('/admin/record-payment', methods=['GET', 'POST'])
