@@ -23,6 +23,7 @@
                     <th>Total</th>
                     <th>Status</th>
                     <th>Reviewed</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -30,8 +31,8 @@
                 <tr>
                     <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
                     <td>
-                        <img src="{{ prod.photo_path }}" 
-                             class="image-thumbnail" 
+                        <img src="{{ prod.photo_path }}"
+                             class="image-thumbnail"
                              alt="Production"
                              onclick="window.open(this.src, '_blank')">
                     </td>
@@ -40,8 +41,8 @@
                     <td>₹{{ "%.2f"|format(prod.rate) }}</td>
                     <td class="text-accent" style="font-weight: 600;">₹{{ "%.2f"|format(prod.total_amount) }}</td>
                     <td>
-                        <span class="badge badge-{{ prod.status.lower().replace('_', '-') }}">
-                            {{ prod.status.replace('_', ' ') }}
+                        <span class="badge badge-{{ prod.status.lower() }}">
+                            {{ prod.status }}
                         </span>
                     </td>
                     <td>
@@ -51,10 +52,22 @@
                             -
                         {% endif %}
                     </td>
+                    <td>
+                        {% if prod.status == 'SUBMITTED' %}
+                        <a href="{{ url_for('edit_production', production_id=prod.production_id) }}"
+                           class="btn btn-info" style="padding: 0.4rem 0.75rem; font-size: 0.75rem;">✏️ Edit</a>
+                        <form method="POST" action="{{ url_for('delete_production', production_id=prod.production_id) }}" style="display:inline; margin-top: 4px;">
+                            <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.75rem; font-size: 0.75rem;"
+                                onclick="return confirm('Delete this entry?')">🗑️ Delete</button>
+                        </form>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                 </tr>
                 {% if prod.status == 'REJECTED' and prod.rejection_reason %}
                 <tr style="background: rgba(239, 71, 111, 0.05);">
-                    <td colspan="8" style="padding: 0.75rem; border-left: 3px solid var(--color-danger);">
+                    <td colspan="9" style="padding: 0.75rem; border-left: 3px solid var(--color-danger);">
                         <strong>Rejection Reason:</strong> {{ prod.rejection_reason }}
                     </td>
                 </tr>
