@@ -453,7 +453,7 @@ def admin_dashboard():
     workers = cursor.fetchall()
 
     cursor.execute("""
-        SELECT p.production_id, w.name as worker_name, p.photo_path, p.bag_type,
+        SELECT p.production_id, w.name as worker_name, p.bag_type,
                p.quantity, p.rate, p.total_amount, p.submitted_at
         FROM production p
         INNER JOIN workers w ON p.worker_id = w.worker_id
@@ -502,7 +502,7 @@ def production_log():
     if date_to:
         query += " AND DATE(p.submitted_at) <= %s"
         params.append(date_to)
-    query += " ORDER BY p.submitted_at DESC"
+   query += " ORDER BY p.submitted_at DESC LIMIT 100"
 
     cursor.execute(query, params)
     productions = cursor.fetchall()
