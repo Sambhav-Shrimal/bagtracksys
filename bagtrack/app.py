@@ -481,7 +481,7 @@ def production_log():
     cursor = db.cursor()
 
     query = """
-        SELECT p.production_id, w.name as worker_name, p.photo_path, p.bag_type,
+       SELECT p.production_id, w.name as worker_name, p.bag_type,
                p.quantity, p.rate, p.total_amount, p.status, p.submitted_at,
                p.reviewed_at, r.name as reviewed_by_name
         FROM production p
