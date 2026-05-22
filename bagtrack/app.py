@@ -476,12 +476,10 @@ def production_log():
     status = request.args.get('status', '')
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
-
     db = get_db()
     cursor = db.cursor()
-
     query = """
-       SELECT p.production_id, w.name as worker_name, p.bag_type,
+        SELECT p.production_id, w.name as worker_name, p.bag_type,
                p.quantity, p.rate, p.total_amount, p.status, p.submitted_at,
                p.reviewed_at, r.name as reviewed_by_name
         FROM production p
@@ -502,23 +500,17 @@ def production_log():
     if date_to:
         query += " AND DATE(p.submitted_at) <= %s"
         params.append(date_to)
-   if date_to:
-        query += " AND DATE(p.submitted_at) <= %s"
-        params.append(date_to)
     query += " ORDER BY p.submitted_at DESC LIMIT 100"
     cursor.execute(query, params)
     productions = cursor.fetchall()
-
     cursor.execute("SELECT worker_id, name FROM workers WHERE is_admin = FALSE ORDER BY name")
     workers = cursor.fetchall()
-
     cursor.close()
     db.close()
     return render_template('production_log.html',
                            productions=productions, workers=workers,
                            filters={'worker_id': worker_id, 'status': status,
                                     'date_from': date_from, 'date_to': date_to})
-
 
 @app.route('/admin/review-production/<int:production_id>', methods=['GET', 'POST'])
 @admin_required
