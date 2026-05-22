@@ -502,8 +502,10 @@ def production_log():
     if date_to:
         query += " AND DATE(p.submitted_at) <= %s"
         params.append(date_to)
-   query += " ORDER BY p.submitted_at DESC LIMIT 100"
-
+   if date_to:
+        query += " AND DATE(p.submitted_at) <= %s"
+        params.append(date_to)
+    query += " ORDER BY p.submitted_at DESC LIMIT 100"
     cursor.execute(query, params)
     productions = cursor.fetchall()
 
