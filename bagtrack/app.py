@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import os
 import secrets
 import base64
+import requestsf
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -54,14 +55,21 @@ def allowed_file(filename):
 
 
 def file_to_base64(file):
-    """Convert uploaded file to base64 data URI for storing in DB"""
+    """Upload file to ImgBB and return the image URL"""
+    import requests
     file_bytes = file.read()
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    mime_map = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'gif': 'gif', 'webp': 'webp'}
-    mime = mime_map.get(ext, 'jpeg')
     b64 = base64.b64encode(file_bytes).decode('utf-8')
-    return f"data:image/{mime};base64,{b64}"
-
+    response = requests.post(
+        'https://api.imgbb.com/1/upload',
+        data={
+            'key': '6636b01254c428b9a29c4d8aceb0e576',
+            'image': b64,
+        }
+    )
+    data = response.json()
+    if data.get('success'):
+        return data['data']['url']
+    raise Exception(f"ImgBB upload failed: {data}")
 
 def login_required(f):
     """Decorator to require login for routes"""
