@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import os
 import secrets
 import base64
-import requestsf
+import requests
 
 from dotenv import load_dotenv
 load_dotenv()
