@@ -80,7 +80,7 @@
                     <td>{{ prod.submitted_at.strftime('%d %b %Y') }}</td>
                     <td style="font-weight: 600;">{{ prod.worker_name }}</td>
                     <td>
-                        {% if prod.photo_path and prod.photo_path.startswith('data:image') %}
+                       {% if prod.photo_path %}
                         <img src="{{ prod.photo_path }}"
                              class="image-thumbnail"
                              alt="Production"
