@@ -487,10 +487,10 @@ def production_log():
     db = get_db()
     cursor = db.cursor()
     query = """
-        SELECT p.production_id, w.name as worker_name, p.bag_type,
-               p.quantity, p.rate, p.total_amount, p.status, p.submitted_at,
-               p.reviewed_at, r.name as reviewed_by_name
-        FROM production p
+    SELECT p.production_id, w.name as worker_name, p.photo_path, p.bag_type,
+           p.quantity, p.rate, p.total_amount, p.status, p.submitted_at,
+           p.reviewed_at, r.name as reviewed_by_name
+    FROM production p
         INNER JOIN workers w ON p.worker_id = w.worker_id
         LEFT JOIN workers r ON p.reviewed_by = r.worker_id
         WHERE 1=1
