@@ -3,7 +3,7 @@ BagTrack - Production Management System
 A piece-rate tracking system for paper bag manufacturing workers
 Updated for PyMySQL (works on Render.com)
 """
-
+import cloudinary
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 import pymysql
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -55,22 +55,13 @@ def allowed_file(filename):
 
 
 def file_to_base64(file):
-    """Upload file to ImgBB and return the image URL"""
-    import requests
-    file_bytes = file.read()
-    b64 = base64.b64encode(file_bytes).decode('utf-8')
-    response = requests.post(
-        'https://api.imgbb.com/1/upload',
-        data={
-            'key': '6636b01254c428b9a29c4d8aceb0e576',
-            'image': b64,
-        }
-    )
-    data = response.json()
-    if data.get('success'):
-        return data['data']['url']
-    raise Exception(f"ImgBB upload failed: {data}")
-
+    """Upload file to Cloudinary and return the image URL"""
+    import cloudinary.uploader
+    try:
+        result = cloudinary.uploader.upload(file)
+        return result['secure_url']
+    except Exception as e:
+        raise Exception(f"Cloudinary upload failed: {e}")
 def login_required(f):
     """Decorator to require login for routes"""
     @wraps(f)
